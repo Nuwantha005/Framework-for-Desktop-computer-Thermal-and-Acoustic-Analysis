@@ -103,14 +103,45 @@ class VisualizationConfig(BaseModel):
     enabled: bool = Field(default=True, description="Enable visualization")
     show_mesh: bool = Field(default=True, description="Plot mesh geometry")
     show_normals: bool = Field(default=False, description="Show panel normals")
-    contour_resolution: Tuple[int, int] = Field(
-        default=(100, 100),
-        description="Grid resolution for contour plots (nx, ny)"
+    
+    # Domain settings
+    domain: Optional[dict] = Field(
+        default=None,
+        description="Visualization domain {x_range: [min, max], y_range: [min, max]}"
     )
+    resolution: Tuple[int, int] = Field(
+        default=(150, 120),
+        description="Grid resolution for field plots (nx, ny)"
+    )
+    
+    # Legacy field (deprecated, use resolution instead)
+    contour_resolution: Optional[Tuple[int, int]] = Field(
+        default=None,
+        description="[Deprecated] Use 'resolution' instead"
+    )
+    
     streamline_seeds: Optional[List[Tuple[float, float, float]]] = Field(
         default=None,
         description="Seed points for streamlines"
     )
+    
+    def get_resolution(self) -> Tuple[int, int]:
+        """Get resolution, handling legacy field."""
+        if self.contour_resolution is not None:
+            return self.contour_resolution
+        return self.resolution
+    
+    def get_x_range(self, default: Tuple[float, float] = (-2.0, 3.0)) -> Tuple[float, float]:
+        """Get x_range from domain or return default."""
+        if self.domain and 'x_range' in self.domain:
+            return tuple(self.domain['x_range'])
+        return default
+    
+    def get_y_range(self, default: Tuple[float, float] = (-2.0, 2.0)) -> Tuple[float, float]:
+        """Get y_range from domain or return default."""
+        if self.domain and 'y_range' in self.domain:
+            return tuple(self.domain['y_range'])
+        return default
 
 
 class SimulationConfig(BaseModel):

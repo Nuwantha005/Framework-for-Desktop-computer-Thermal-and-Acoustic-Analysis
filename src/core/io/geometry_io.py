@@ -272,3 +272,89 @@ def generate_circle(radius: float, num_panels: int,
     component_ids = np.zeros(panels.shape[0], dtype=np.int32)
     
     return Mesh(nodes=nodes, panels=panels, dimension=2, component_ids=component_ids)
+
+def generate_rounded_rectangle(
+    center: tuple[float, float] = (0.0, 0.0),
+    width: float = 4.0,
+    height: float = 2.0,
+    corner_radius: float = 0.3,
+    num_panels_per_side: int = 20,
+    num_panels_per_arc: int = 20
+) -> Mesh:
+    """
+    Generate rounded rectangle mesh in 2D.
+    Points are ordered CCW to ensure outward normals.
+    
+    Args:
+        center: Center point (x, y)
+        width: Rectangle width
+        height: Rectangle height
+        radius: Corner radius
+        n_line: Number of panels per straight edge
+        n_arc: Number of panels per corner arc
+    
+    Returns:
+        2D Mesh of rounded rectangle
+    """
+    cx, cy = center
+    a = width / 2
+    b = height / 2
+    r = corner_radius
+
+    if r > min(a, b):
+        raise ValueError("Corner radius too large for dimensions")
+
+    pts = []
+
+    # Generate points in CCW order starting from bottom-right straight edge
+    # Note: linspace endpoint=False avoids duplicate points where segments join
+    
+    # 1. Right edge (vertical, going up)
+    y_right = np.linspace(-b + r, b - r, num_panels_per_side + 1)[:-1]
+    pts.extend([(a, y) for y in y_right])
+    
+    # 2. Top-right arc (0 to 90 degrees)
+    theta_tr = np.linspace(0, np.pi/2, num_panels_per_arc + 1)[:-1]
+    x0, y0 = a - r, b - r
+    pts.extend([(x0 + r*np.cos(t), y0 + r*np.sin(t)) for t in theta_tr])
+    
+    # 3. Top edge (horizontal, going left)
+    x_top = np.linspace(a - r, -a + r, num_panels_per_side + 1)[:-1]
+    pts.extend([(x, b) for x in x_top])
+    
+    # 4. Top-left arc (90 to 180 degrees)
+    theta_tl = np.linspace(np.pi/2, np.pi, num_panels_per_arc + 1)[:-1]
+    x0, y0 = -a + r, b - r
+    pts.extend([(x0 + r*np.cos(t), y0 + r*np.sin(t)) for t in theta_tl])
+    
+    # 5. Left edge (vertical, going down)
+    y_left = np.linspace(b - r, -b + r, num_panels_per_side + 1)[:-1]
+    pts.extend([(-a, y) for y in y_left])
+    
+    # 6. Bottom-left arc (180 to 270 degrees)
+    theta_bl = np.linspace(np.pi, 3*np.pi/2, num_panels_per_arc + 1)[:-1]
+    x0, y0 = -a + r, -b + r
+    pts.extend([(x0 + r*np.cos(t), y0 + r*np.sin(t)) for t in theta_bl])
+    
+    # 7. Bottom edge (horizontal, going right)
+    x_bottom = np.linspace(-a + r, a - r, num_panels_per_side + 1)[:-1]
+    pts.extend([(x, -b) for x in x_bottom])
+    
+    # 8. Bottom-right arc (270 to 360 degrees)
+    theta_br = np.linspace(3*np.pi/2, 2*np.pi, num_panels_per_arc + 1)[:-1]
+    x0, y0 = a - r, -b + r
+    pts.extend([(x0 + r*np.cos(t), y0 + r*np.sin(t)) for t in theta_br])
+
+    # Shift to center
+    pts = [(x + cx, y + cy) for x, y in pts]
+    
+    # Convert to 3D nodes
+    nodes = np.array([[x, y, 0.0] for x, y in pts], dtype=np.float64)
+    
+    # Generate panels (connect consecutive points)
+    num_nodes = len(nodes)
+    panels = np.array([[i, (i + 1) % num_nodes] for i in range(num_nodes)], dtype=np.int32)
+    
+    component_ids = np.zeros(panels.shape[0], dtype=np.int32)
+    
+    return Mesh(nodes=nodes, panels=panels, dimension=2, component_ids=component_ids)

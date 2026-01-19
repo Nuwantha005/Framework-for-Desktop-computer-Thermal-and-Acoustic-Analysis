@@ -1,0 +1,25 @@
+name: "Cylinder Flow"
+case_type: "hardcoded_panels_2d"
+description: "Flow around cylinder - analytical validation case (Cp = 1 - 4*sin^2(theta))"
+
+freestream:
+  velocity: [1.0, 0.0, 0.0]
+
+components:
+  - name: "cylinder"
+    geometry_file: "shapes/cylinder.json"
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation_deg: 0.0
+    boundary_condition:
+      type: "wall"
+
+solver:
+  type: "constant_source"
+  tolerance: 1.0e-10
+
+visualization:
+  domain:
+    x_range: [-2.0, 3.0]
+    y_range: [-2.0, 2.0]
+  resolution: [200, 160]

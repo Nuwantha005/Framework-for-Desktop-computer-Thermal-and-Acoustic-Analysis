@@ -1,0 +1,25 @@
+name: "Single Square"
+case_type: "hardcoded_panels_2d"
+description: "Unit square in uniform freestream - basic validation case"
+
+freestream:
+  velocity: [1.0, 0.0, 0.0]
+
+components:
+  - name: "square"
+    geometry_file: "shapes/square.json"
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation_deg: 0.0
+    boundary_condition:
+      type: "wall"
+
+solver:
+  type: "constant_source"
+  tolerance: 1.0e-10
+
+visualization:
+  domain:
+    x_range: [-2.0, 2.0]
+    y_range: [-1.5, 1.5]
+  resolution: [150, 120]

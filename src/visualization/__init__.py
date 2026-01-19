@@ -1,17 +1,23 @@
-"""Visualization module."""
+"""Visualization module for panel method solver."""
 
-from .mesh_plot import (
-    MeshPlotter,
-    quick_plot_mesh,
-    quick_plot_component,
-    quick_plot_scene,
-)
+from .visualizer import Visualizer, OutputManager
+from .field2d import VelocityField2D
+from .panel2d import PanelVisualizer2D
+
+# Legacy exports (prefer Visualizer for new code)
+from .mesh_plot import MeshPlotter, quick_plot_mesh, quick_plot_component, quick_plot_scene
 from .streamlines import StreamlineVisualizer
 
 __all__ = [
-    "MeshPlotter",
-    "quick_plot_mesh",
-    "quick_plot_component",
-    "quick_plot_scene",
-    "StreamlineVisualizer",
+    # Primary API
+    'Visualizer',
+    'OutputManager',
+    'VelocityField2D',
+    'PanelVisualizer2D',
+    # Legacy
+    'MeshPlotter',
+    'quick_plot_mesh',
+    'quick_plot_component',
+    'quick_plot_scene',
+    'StreamlineVisualizer',
 ]

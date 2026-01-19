@@ -3,7 +3,7 @@ YAML case file loader with validation.
 """
 
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Union
 import yaml
 import numpy as np
 
@@ -11,6 +11,7 @@ from ..config.schemas import SimulationConfig
 from ..geometry.component import Component, Transform
 from ..geometry.scene import Scene
 from .geometry_io import GeometryReader
+from .case import Case
 
 
 class CaseLoader:
@@ -26,6 +27,9 @@ class CaseLoader:
         
         Returns:
             Tuple of (Scene object, validated config)
+        
+        Note:
+            Consider using load_case() instead for cleaner access.
         """
         filepath = Path(filepath)
         
@@ -137,68 +141,33 @@ class CaseLoader:
         
         return True
 
-
-def create_example_case(output_path: str | Path) -> None:
-    """
-    Create an example YAML case file.
-    
-    Args:
-        output_path: Where to write the example file
-    """
-    example = {
-        "name": "Example Two Squares",
-        "case_type": "hardcoded_panels_2d",
-        "description": "Example case with two squares in freestream",
+    @staticmethod
+    def load_case(case_dir: str | Path) -> Case:
+        """
+        Load a case directory and return a Case object.
         
-        "freestream": {
-            "velocity": [1.0, 0.0, 0.0]
-        },
+        This is the recommended way to load cases. Provides clean access:
+            case = CaseLoader.load_case('cases/cylinder_flow')
+            print(case.name)
+            print(case.x_range, case.y_range)
+            mesh = case.mesh
         
-        "components": [
-            {
-                "name": "square_left",
-                "geometry_file": "data/geometries/square_unit.json",
-                "transform": {
-                    "translation": [-2.0, 0.0, 0.0],
-                    "rotation_deg": 0.0
-                },
-                "boundary_condition": {
-                    "type": "wall"
-                }
-            },
-            {
-                "name": "square_right",
-                "geometry_file": "data/geometries/square_unit.json",
-                "transform": {
-                    "translation": [2.0, 0.0, 0.0],
-                    "rotation_deg": 45.0
-                },
-                "boundary_condition": {
-                    "type": "wall"
-                }
-            }
-        ],
+        Args:
+            case_dir: Path to case directory (containing case.yaml)
         
-        "solver": {
-            "type": "constant_source",
-            "tolerance": 1.0e-10
-        },
+        Returns:
+            Case object with scene, config, and helper properties
+        """
+        case_dir = Path(case_dir)
+        case_file = case_dir / "case.yaml"
         
-        "output": {
-            "directory": "./results/two_squares",
-            "formats": ["vtk", "csv"]
-        },
+        if not case_file.exists():
+            raise FileNotFoundError(f"No case.yaml found in {case_dir}")
         
-        "visualization": {
-            "enabled": True,
-            "show_mesh": True,
-            "show_normals": True,
-            "contour_resolution": [100, 100]
-        }
-    }
-    
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    with open(output_path, 'w') as f:
-        yaml.dump(example, f, default_flow_style=False, sort_keys=False)
+        scene, config = CaseLoader.load(case_file)
+        
+        return Case(
+            scene=scene,
+            config=config,
+            case_dir=case_dir
+        )

@@ -302,13 +302,13 @@ class StreamlineVisualizer:
                                 linewidth=1.0, density=streamline_density,
                                 start_points=seed_points,
                                 arrowsize=1.2, arrowstyle='->',
-                                maxlength=50.0, integration_direction='both')
+                                maxlength=10.0, integration_direction='both',broken_streamlines=False)
         else:
             strm = ax.streamplot(XX[0, :], YY[:, 0], Vx, Vy,
                                 color=speed, cmap='viridis',
                                 linewidth=1.0, density=streamline_density,
                                 arrowsize=1.2, arrowstyle='->',
-                                maxlength=50.0)
+                                maxlength=10.0,broken_streamlines=False)
         
         # Add colorbar
         cbar = plt.colorbar(strm.lines, ax=ax, label='Velocity Magnitude')

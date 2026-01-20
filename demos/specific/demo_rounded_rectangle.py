@@ -1,9 +1,10 @@
 """
 Demo: Rounded Rectangle - Standalone Visualization
 
-Shows how to use Visualizer without a case file:
+Shows how to use Visualizer and PostProcessing without a case file:
 - Single mesh visualization
 - Scene with multiple components
+- Post-processing pipeline for pressure, potential, etc.
 - Exporting to case folder for later reuse
 """
 
@@ -19,6 +20,11 @@ from core.io.case_exporter import CaseExporter
 from core.geometry import Component, Scene, Transform
 from visualization import Visualizer
 from visualization.field2d import VelocityField2D
+from postprocessing import (
+    FieldData, FluidState, 
+    ProcessorPipeline, PressureProcessor, VelocityPotentialProcessor
+)
+from postprocessing.velocity_potential import VorticityProcessor
 
 
 def one_rect():
@@ -70,8 +76,8 @@ def two_rects_scene():
         width=2.0,
         height=1.0,
         corner_radius=0.2,
-        num_panels_per_side=4,
-        num_panels_per_arc=3
+        num_panels_per_side=20,
+        num_panels_per_arc=10
     )
     
     # Component 1: Front rectangle (no transform)
@@ -115,16 +121,47 @@ def two_rects_scene():
     solver.solve()
     print(f"Cp range: [{min(solver.Cp):.4f}, {max(solver.Cp):.4f}]")
     
-    # Combined visualization
+    # =========================================================================
+    # Post-processing WITHOUT a case file - FluidState specified directly
+    # =========================================================================
+    print("\n--- Standalone Post-Processing ---")
+    
+    # Compute velocity field
     field = VelocityField2D(mesh, v_inf, aoa, solver.sigma)
     XX, YY, Vx, Vy = field.compute((-6, 4), (-3, 3), (200, 120), num_cores=6)
     
+    # Create FieldData container
+    fields = FieldData(XX, YY)
+    fields.add_vector("velocity", Vx, Vy, units="m/s")
+    fields.set_metadata("v_inf", v_inf)
+    
+    # Create FluidState directly (no case file needed!)
+    fluid = FluidState.air_standard()  # Air at standard conditions
+    print(f"Fluid: {fluid}")
+    
+    # Build and run post-processing pipeline
+    pipeline = ProcessorPipeline()
+    pipeline.add(PressureProcessor())
+    pipeline.add(VelocityPotentialProcessor())
+    pipeline.add(VorticityProcessor())
+    
+    pipeline.run(fields, fluid)
+    print(f"Computed fields: {fields.available}")
+    
+    # Visualize using the new plot_field interface
     viz2 = Visualizer()
-    viz2.create_figure(subplots=(2, 2), figsize=(14, 12), title="Two Rounded Rectangles - Results")
+    viz2.create_figure(subplots=(2, 3), figsize=(18, 12), title="Two Rounded Rectangles - Full Analysis")
+    
     viz2.plot_scene(scene, ax_index=0, show_normals=True, title="Geometry")
-    viz2.plot_contours(XX, YY, Vx, Vy, mesh, ax_index=1, title="Velocity Magnitude")
-    viz2.plot_streamlines(XX, YY, Vx, Vy, mesh, ax_index=2, title="Streamlines")
-    viz2.plot_cp(mesh, solver.Cp, ax_index=3, title="Pressure Coefficient")
+    viz2.plot_field("velocity", fields, mesh, ax_index=1, component="magnitude", title="|V|")
+    viz2.plot_field("pressure_coefficient", fields, mesh, ax_index=2, 
+                    title="Cp Field", cmap='RdBu_r', symmetric=True, show_iso=True)
+    viz2.plot_streamlines(XX, YY, Vx, Vy, mesh, ax_index=3, title="Streamlines")
+    viz2.plot_field("stream_function", fields, mesh, ax_index=4,
+                    title="Stream Function ψ", cmap='coolwarm', show_iso=True)
+    viz2.plot_field("vorticity", fields, mesh, ax_index=5,
+                    title="Vorticity ω", cmap='RdBu_r', symmetric=True)
+    
     viz2.finalize(show=True)
 
 
@@ -164,9 +201,10 @@ def export_to_case():
         description="Two rounded rectangles with offset - exported from code"
     )
     
-    # Export to case folder
+    # Export to case folder with fluid properties
     exporter = CaseExporter.from_scene(scene)
-    exporter.set_visualization_domain((-6, 5), (-3, 3), (200, 150))
+    exporter.set_visualization_domain((-6, 5), (-4, 4), (200, 150))
+    exporter.set_fluid(density=1.225, gravity=0.0, reference_pressure=101325.0)
     
     case_dir = Path(__file__).parent.parent.parent / "cases" / "two_rounded_rects"
     exporter.export(case_dir, overwrite=True)
@@ -176,6 +214,6 @@ def export_to_case():
 
 
 if __name__ == "__main__":
-    one_rect()
-    #two_rects_scene()
+    #one_rect()
+    two_rects_scene()
     #export_to_case()

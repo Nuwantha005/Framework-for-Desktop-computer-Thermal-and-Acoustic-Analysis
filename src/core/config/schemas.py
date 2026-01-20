@@ -98,6 +98,42 @@ class OutputConfig(BaseModel):
     )
 
 
+class FluidConfig(BaseModel):
+    """Fluid properties configuration."""
+    density: float = Field(
+        default=1.225,
+        gt=0,
+        description="Fluid density [kg/m³]"
+    )
+    viscosity: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Dynamic viscosity [Pa·s] (optional, for BL calculations)"
+    )
+    thermal_conductivity: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Thermal conductivity [W/(m·K)] (optional)"
+    )
+    specific_heat_cp: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Specific heat at constant pressure [J/(kg·K)]"
+    )
+    gravity: float = Field(
+        default=0.0,
+        description="Gravitational acceleration in -y direction [m/s²]"
+    )
+    reference_pressure: float = Field(
+        default=101325.0,
+        description="Reference pressure for Bernoulli [Pa]"
+    )
+    reference_type: Literal["freestream", "outlet"] = Field(
+        default="freestream",
+        description="Reference condition type"
+    )
+
+
 class VisualizationConfig(BaseModel):
     """Visualization settings."""
     enabled: bool = Field(default=True, description="Enable visualization")
@@ -170,6 +206,11 @@ class SimulationConfig(BaseModel):
     solver: SolverConfig = Field(
         default_factory=SolverConfig,
         description="Solver settings"
+    )
+    
+    fluid: FluidConfig = Field(
+        default_factory=FluidConfig,
+        description="Fluid properties"
     )
     
     output: OutputConfig = Field(

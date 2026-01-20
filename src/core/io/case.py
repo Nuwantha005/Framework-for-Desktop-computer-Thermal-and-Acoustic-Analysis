@@ -158,6 +158,56 @@ class Case:
         return self.config.solver.tolerance
     
     # -------------------------------------------------------------------------
+    # Fluid Properties
+    # -------------------------------------------------------------------------
+    
+    @property
+    def density(self) -> float:
+        """Fluid density [kg/m³]."""
+        return self.config.fluid.density
+    
+    @property
+    def viscosity(self) -> Optional[float]:
+        """Dynamic viscosity [Pa·s], if specified."""
+        return self.config.fluid.viscosity
+    
+    @property
+    def gravity(self) -> float:
+        """Gravitational acceleration [m/s²]."""
+        return self.config.fluid.gravity
+    
+    @property
+    def reference_pressure(self) -> float:
+        """Reference pressure [Pa]."""
+        return self.config.fluid.reference_pressure
+    
+    def get_fluid_state(self) -> 'FluidState':
+        """
+        Create FluidState object from case config.
+        
+        Returns:
+            FluidState for post-processing calculations
+        """
+        # Import here to avoid circular dependency
+        from postprocessing.fluid import FluidState, ReferenceCondition, ReferenceType
+        
+        ref_type = ReferenceType(self.config.fluid.reference_type)
+        ref = ReferenceCondition(
+            type=ref_type,
+            pressure=self.config.fluid.reference_pressure,
+            velocity=self.v_inf
+        )
+        
+        return FluidState(
+            density=self.config.fluid.density,
+            reference=ref,
+            gravity=self.config.fluid.gravity,
+            viscosity=self.config.fluid.viscosity,
+            thermal_conductivity=self.config.fluid.thermal_conductivity,
+            specific_heat_cp=self.config.fluid.specific_heat_cp
+        )
+    
+    # -------------------------------------------------------------------------
     # Output Paths
     # -------------------------------------------------------------------------
     

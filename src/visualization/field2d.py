@@ -111,9 +111,8 @@ class VelocityField2D:
         self.phi = np.arctan2(ty, tx)
         self.phi = np.where(self.phi < 0, self.phi + 2*np.pi, self.phi)
         
-        # Boundary path for masking interior points
-        boundary_points = np.column_stack([mesh.nodes[:, 0], mesh.nodes[:, 1]])
-        self.boundary_path = path.Path(boundary_points)
+        # Build boundary paths for each component separately
+        self.boundary_paths = self._build_component_paths(mesh)
         
         # Cached field data
         self._XX: Optional[NDArray] = None
@@ -177,8 +176,8 @@ class VelocityField2D:
         Vx_flat = results_arr[:, 0]
         Vy_flat = results_arr[:, 1]
         
-        # Mask interior points
-        is_inside = self.boundary_path.contains_points(points_flat)
+        # Mask interior points (check each component separately)
+        is_inside = self._points_inside_any_body(points_flat)
         Vx_flat[is_inside] = np.nan
         Vy_flat[is_inside] = np.nan
         
@@ -198,6 +197,58 @@ class VelocityField2D:
         print(f"✓ Field computed and cached.")
         
         return XX, YY, Vx, Vy
+    
+    def _build_component_paths(self, mesh: Mesh) -> list:
+        """
+        Build separate boundary paths for each component in the mesh.
+        
+        Returns:
+            List of matplotlib Path objects, one per component
+        """
+        component_ids = np.unique(mesh.component_ids)
+        paths = []
+        
+        for comp_id in component_ids:
+            # Get panel indices for this component
+            comp_mask = mesh.component_ids == comp_id
+            comp_panel_indices = np.where(comp_mask)[0]
+            
+            if len(comp_panel_indices) == 0:
+                continue
+            
+            # Collect ordered nodes for this component
+            # Panels are assumed to be in order around the body
+            comp_nodes = []
+            for panel_idx in comp_panel_indices:
+                n1_idx = mesh.panels[panel_idx, 0]
+                comp_nodes.append(mesh.nodes[n1_idx, :2])
+            
+            # Close the path by adding the last panel's end node
+            last_panel_idx = comp_panel_indices[-1]
+            n2_idx = mesh.panels[last_panel_idx, 1]
+            comp_nodes.append(mesh.nodes[n2_idx, :2])
+            
+            comp_nodes = np.array(comp_nodes)
+            paths.append(path.Path(comp_nodes))
+        
+        return paths
+    
+    def _points_inside_any_body(self, points: NDArray) -> NDArray:
+        """
+        Check if points are inside any of the component boundaries.
+        
+        Args:
+            points: (N, 2) array of points to check
+            
+        Returns:
+            Boolean array of shape (N,) - True if point is inside any body
+        """
+        is_inside = np.zeros(len(points), dtype=bool)
+        
+        for body_path in self.boundary_paths:
+            is_inside |= body_path.contains_points(points)
+        
+        return is_inside
     
     def _is_cached(self,
                    x_range: Tuple[float, float],

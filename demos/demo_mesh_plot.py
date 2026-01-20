@@ -28,6 +28,7 @@ def main():
     parser.add_argument("--show", action="store_true", help="Display plot interactively")
     parser.add_argument("--save", action="store_true", help="Save plot to case_dir/out/")
     parser.add_argument("--normals", action="store_true", help="Show panel normals")
+    parser.add_argument("--domain", action="store_true", help="Use domain from case config")
     parser.add_argument("--protect", action="store_true", help="Save to timestamped subfolder")
     args = parser.parse_args()
     
@@ -50,8 +51,14 @@ def main():
     # Plot
     show_normals = args.normals or case.show_normals
     viz.create_figure(figsize=(10, 8))
-    viz.plot_scene(case.scene, show_normals=show_normals, show_freestream=True,
-                   title=f"{case.name} - Mesh")
+    ax = viz.plot_scene(case.scene, show_normals=show_normals, show_freestream=True,
+                        title=f"{case.name} - Mesh")
+    
+    # Apply domain if requested
+    if args.domain:
+        ax.set_xlim(case.x_range)
+        ax.set_ylim(case.y_range)
+        print(f"Domain: x={case.x_range}, y={case.y_range}")
     
     save_name = "mesh.png" if args.save else None
     viz.finalize(save=save_name, show=args.show)

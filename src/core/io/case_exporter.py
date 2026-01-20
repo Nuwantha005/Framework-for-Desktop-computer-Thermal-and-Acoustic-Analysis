@@ -62,6 +62,9 @@ class CaseExporter:
             'y_range': [-3.0, 3.0]
         }
         self.viz_resolution = [150, 120]
+        
+        # Fluid properties (optional, uses defaults if not set)
+        self.fluid: Optional[dict] = None
     
     @classmethod
     def from_scene(cls,
@@ -193,6 +196,40 @@ class CaseExporter:
         }
         self.viz_resolution = list(resolution)
     
+    def set_fluid(self,
+                  density: float = 1.225,
+                  viscosity: Optional[float] = None,
+                  gravity: float = 0.0,
+                  reference_pressure: float = 101325.0,
+                  reference_type: str = "freestream"):
+        """
+        Set fluid properties for post-processing.
+        
+        Args:
+            density: Fluid density [kg/m³]
+            viscosity: Dynamic viscosity [Pa·s] (optional)
+            gravity: Gravitational acceleration [m/s²]
+            reference_pressure: Reference pressure [Pa]
+            reference_type: "freestream" or "outlet"
+        """
+        self.fluid = {
+            'density': density,
+            'gravity': gravity,
+            'reference_pressure': reference_pressure,
+            'reference_type': reference_type
+        }
+        if viscosity is not None:
+            self.fluid['viscosity'] = viscosity
+    
+    def set_fluid_from_state(self, fluid_state: 'FluidState'):
+        """
+        Set fluid properties from a FluidState object.
+        
+        Args:
+            fluid_state: FluidState object from postprocessing.fluid
+        """
+        self.fluid = fluid_state.to_dict()
+    
     def _auto_domain(self, scene: Scene):
         """Automatically compute visualization domain from scene."""
         mesh = scene.assemble()
@@ -256,6 +293,10 @@ class CaseExporter:
                 'resolution': self.viz_resolution
             }
         }
+        
+        # Add fluid properties if set
+        if self.fluid is not None:
+            case_config['fluid'] = self.fluid
         
         # Write case.yaml
         case_file = case_dir / "case.yaml"

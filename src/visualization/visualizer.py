@@ -274,6 +274,7 @@ class Visualizer:
                         fc='red', ec='red', alpha=0.7, zorder=12)
         
         self._auto_scale_axis(ax, mesh.nodes[:, :2])
+        return ax
     
     def plot_scene(self,
                   scene: Scene,
@@ -299,9 +300,11 @@ class Visualizer:
         self.plot_mesh(mesh, ax_index=ax_index, show_normals=show_normals, 
                       component_colors=True, title=title)
         
+        ax = self._get_ax(ax_index)
         if show_freestream:
-            ax = self._get_ax(ax_index)
             self._draw_freestream_arrow(ax, scene.freestream)
+        
+        return ax
     
     # -------------------------------------------------------------------------
     # Post-Processing Plots (Post-solve)
@@ -442,6 +445,140 @@ class Visualizer:
         ax.grid(True, alpha=0.3)
     
     # -------------------------------------------------------------------------
+    # Generic Field Plotting (for FieldData)
+    # -------------------------------------------------------------------------
+    
+    def plot_scalar_field(self,
+                         data: NDArray,
+                         XX: NDArray,
+                         YY: NDArray,
+                         mesh: Optional[Mesh] = None,
+                         ax_index: Optional[int] = None,
+                         levels: int = 20,
+                         show_body: bool = True,
+                         show_iso: bool = False,
+                         iso_levels: Optional[List[float]] = None,
+                         title: str = "Field",
+                         cmap: str = 'jet',
+                         label: str = "",
+                         symmetric: bool = False) -> Axes:
+        """
+        Plot any scalar field as contours.
+        
+        This is the generic method for plotting fields from FieldData.
+        
+        Args:
+            data: 2D array of values (ny, nx)
+            XX, YY: Meshgrid coordinates
+            mesh: Body mesh (for outline), optional
+            ax_index: Subplot index
+            levels: Number of filled contour levels
+            show_body: Draw body outline (if mesh provided)
+            show_iso: Draw iso-contour lines
+            iso_levels: Specific values for iso-contours (auto if None)
+            title: Plot title
+            cmap: Colormap
+            label: Colorbar label
+            symmetric: Center colormap at zero (for diverging data)
+            
+        Returns:
+            Axes object for further customization
+        """
+        ax = self._get_ax(ax_index)
+        ax.set_aspect('equal')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_title(title)
+        
+        # Handle symmetric colormap (for things like pressure_gauge)
+        if symmetric:
+            vmax = np.nanmax(np.abs(data))
+            vmin = -vmax
+        else:
+            vmin, vmax = np.nanmin(data), np.nanmax(data)
+        
+        # Filled contours
+        cf = ax.contourf(XX, YY, data, levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
+        plt.colorbar(cf, ax=ax, label=label)
+        
+        # Iso-contour lines
+        if show_iso:
+            if iso_levels is None:
+                iso_levels = levels // 4 if isinstance(levels, int) else 5
+            cs = ax.contour(XX, YY, data, levels=iso_levels, colors='black', 
+                           linewidths=0.5, alpha=0.5)
+            ax.clabel(cs, inline=True, fontsize=8, fmt='%.2g')
+        
+        if show_body and mesh is not None:
+            self._draw_body_outline(ax, mesh, fill=True)
+        
+        ax.set_xlim(XX[0, 0], XX[0, -1])
+        ax.set_ylim(YY[0, 0], YY[-1, 0])
+        ax.grid(True, alpha=0.3)
+        
+        return ax
+    
+    def plot_field(self,
+                  field_name: str,
+                  fields: 'FieldData',
+                  mesh: Optional[Mesh] = None,
+                  ax_index: Optional[int] = None,
+                  component: str = "magnitude",
+                  **kwargs) -> Axes:
+        """
+        Plot a named field from FieldData container.
+        
+        This is the recommended interface for post-processing visualization.
+        
+        Args:
+            field_name: Name of the field (e.g., "velocity", "pressure")
+            fields: FieldData container
+            mesh: Body mesh for outline
+            ax_index: Subplot index
+            component: For vector fields - "magnitude", "x", or "y"
+            **kwargs: Passed to plot_scalar_field (levels, cmap, etc.)
+            
+        Returns:
+            Axes object
+            
+        Usage:
+            viz.plot_field("pressure", fields, mesh, title="Static Pressure")
+            viz.plot_field("velocity", fields, mesh, component="x", title="Vx")
+            viz.plot_field("pressure_coefficient", fields, mesh, symmetric=True)
+        """
+        # Import here to avoid circular dependency
+        from postprocessing.fields import FieldData, ScalarField, VectorField
+        
+        if field_name not in fields:
+            raise ValueError(f"Field '{field_name}' not found. Available: {fields.available}")
+        
+        fld = fields[field_name]
+        
+        # Handle vector fields
+        if isinstance(fld, VectorField):
+            scalar = fld.to_scalar(component)
+            data = scalar.data
+            default_title = scalar.name
+            default_label = f"{scalar.name} [{scalar.units}]" if scalar.units else scalar.name
+        else:
+            data = fld.data
+            default_title = fld.name
+            default_label = f"{fld.name} [{fld.units}]" if fld.units else fld.name
+        
+        # Apply defaults
+        kwargs.setdefault("title", default_title)
+        kwargs.setdefault("label", default_label)
+        
+        return self.plot_scalar_field(
+            data=data,
+            XX=fields.XX,
+            YY=fields.YY,
+            mesh=mesh,
+            ax_index=ax_index,
+            **kwargs
+        )
+    
+    # -------------------------------------------------------------------------
     # Helper Methods
     # -------------------------------------------------------------------------
     
@@ -463,20 +600,37 @@ class Visualizer:
         ax.set_ylim(y_min - padding * y_range, y_max + padding * y_range)
     
     def _draw_body_outline(self, ax: Axes, mesh: Mesh, fill: bool = False):
-        """Draw body outline on axis."""
-        for i in range(mesh.num_panels):
-            n1_idx, n2_idx = mesh.panels[i]
-            p1 = mesh.nodes[n1_idx, :2]
-            p2 = mesh.nodes[n2_idx, :2]
-            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], 'k-', lw=2, zorder=5)
+        """Draw body outline on axis, handling multiple components separately."""
+        from matplotlib.patches import Polygon
         
-        if fill:
-            # Fill body interior with white
-            from matplotlib.patches import Polygon
-            body_pts = mesh.nodes[:, :2]
-            poly = Polygon(body_pts, facecolor='white', edgecolor='black', 
-                          linewidth=2, zorder=4)
-            ax.add_patch(poly)
+        # Group panels by component
+        component_ids = np.unique(mesh.component_ids)
+        
+        for comp_id in component_ids:
+            # Get panel indices for this component
+            comp_mask = mesh.component_ids == comp_id
+            comp_panel_indices = np.where(comp_mask)[0]
+            
+            if len(comp_panel_indices) == 0:
+                continue
+            
+            # Collect ordered nodes for this component
+            # Panels should be in order, so we can build the outline
+            comp_nodes = []
+            for i in comp_panel_indices:
+                n1_idx, n2_idx = mesh.panels[i]
+                p1 = mesh.nodes[n1_idx, :2]
+                p2 = mesh.nodes[n2_idx, :2]
+                # Draw the panel edge
+                ax.plot([p1[0], p2[0]], [p1[1], p2[1]], 'k-', lw=2, zorder=5)
+                comp_nodes.append(p1)
+            
+            if fill and len(comp_nodes) > 2:
+                # Close the polygon and fill
+                comp_nodes = np.array(comp_nodes)
+                poly = Polygon(comp_nodes, facecolor='white', edgecolor='black', 
+                              linewidth=2, zorder=4, closed=True)
+                ax.add_patch(poly)
     
     def _draw_freestream_arrow(self, ax: Axes, freestream: NDArray):
         """Draw freestream velocity indicator."""

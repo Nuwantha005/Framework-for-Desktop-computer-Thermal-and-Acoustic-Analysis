@@ -37,30 +37,17 @@ def main():
     if not args.show and not args.save:
         args.save = True
     
-    case_dir = Path(args.case_dir).resolve()
-    case_file = case_dir / "case.yaml"
-    
-    if not case_file.exists():
-        print(f"Error: Case file not found: {case_file}")
-        sys.exit(1)
-    
-    print(f"Loading case: {case_file}")
-    
     # Load case
-    scene, config = CaseLoader.load(case_file)
-    print(f"  Name: {config.name}")
+    case_dir = Path(args.case_dir).resolve()
+    case = CaseLoader.load_case(case_dir)
     
-    # Assemble mesh
-    mesh = scene.assemble()
-    print(f"  Panels: {mesh.num_panels}")
-    
-    # Flow conditions
-    v_inf = float(scene.freestream[0])
-    aoa = 0.0
+    print(f"Loaded: {case.name}")
+    print(f"  Panels: {case.num_panels}")
+    print(f"  V_inf: {case.v_inf}, AoA: {case.aoa}°")
     
     # Solve
     print("Solving...")
-    solver = SourcePanelSolver(mesh, v_inf=v_inf, aoa=aoa)
+    solver = SourcePanelSolver(case.mesh, v_inf=case.v_inf, aoa=case.aoa)
     solver.solve()
     
     if solver.Cp is None:
@@ -69,23 +56,25 @@ def main():
     
     print(f"  Cp range: [{min(solver.Cp):.4f}, {max(solver.Cp):.4f}]")
     
-    # Visualization domain
-    x_range = (-2.0, 3.0)
-    y_range = (-2.0, 2.0)
-    resolution = (150, 120)
+    # Get visualization settings directly from case
+    x_range = case.x_range
+    y_range = case.y_range
+    resolution = case.resolution
+    
+    print(f"Domain: x={x_range}, y={y_range}")
     
     # Compute velocity field
     print(f"Computing velocity field ({resolution[0]}x{resolution[1]}, {args.cores} cores)...")
-    field = VelocityField2D(mesh, v_inf, aoa, solver.sigma)
+    field = VelocityField2D(case.mesh, case.v_inf, case.aoa, solver.sigma)
     XX, YY, Vx, Vy = field.compute(x_range, y_range, resolution, num_cores=args.cores)
     
     # Plot
-    output_dir = case_dir / "out" if args.save else None
+    output_dir = case.output_dir if args.save else None
     viz = Visualizer(output_dir=output_dir, protect_overwrite=args.protect)
     
     viz.create_figure(figsize=(10, 8))
-    viz.plot_contours(XX, YY, Vx, Vy, mesh, levels=args.levels,
-                      title=f"{config.name} - Velocity Magnitude")
+    viz.plot_contours(XX, YY, Vx, Vy, case.mesh, levels=args.levels,
+                      title=f"{case.name} - Velocity Magnitude")
     
     save_name = "contours.png" if args.save else None
     viz.finalize(save=save_name, show=args.show)

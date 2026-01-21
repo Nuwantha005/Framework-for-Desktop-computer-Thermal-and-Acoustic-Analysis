@@ -23,3 +23,10 @@ visualization:
     x_range: [-2.0, 3.0]
     y_range: [-2.0, 2.0]
   resolution: [200, 160]
+
+fluid:
+  density: 1.225
+  viscosity: 1.789e-5 # Optional
+  gravity: 0.0 # Optional
+  reference_pressure: 101325.0
+  reference_type: freestream

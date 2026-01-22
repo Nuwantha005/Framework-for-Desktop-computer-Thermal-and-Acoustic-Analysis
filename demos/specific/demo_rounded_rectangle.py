@@ -175,8 +175,8 @@ def export_to_case():
         width=2.0,
         height=1.0,
         corner_radius=0.2,
-        num_panels_per_side=5,
-        num_panels_per_arc=4
+        num_panels_per_side=50,
+        num_panels_per_arc=40
     )
     
     # Build scene
@@ -206,14 +206,13 @@ def export_to_case():
     exporter.set_visualization_domain((-6, 5), (-4, 4), (200, 150))
     exporter.set_fluid(density=1.225, gravity=0.0, reference_pressure=101325.0)
     
-    case_dir = Path(__file__).parent.parent.parent / "cases" / "two_rounded_rects"
+    case_dir = Path(__file__).parent.parent.parent / "cases" / "two_rounded_rects_fine"
     exporter.export(case_dir, overwrite=True)
     
     print(f"\nNow you can run:")
-    print(f"  python demos/demo_combined.py cases/two_rounded_rects --show")
-
+    print(f"  python demos/demo_combined.py cases/two_rounded_rects_fine --show")
 
 if __name__ == "__main__":
     #one_rect()
-    two_rects_scene()
-    #export_to_case()
+    #two_rects_scene()
+    export_to_case()

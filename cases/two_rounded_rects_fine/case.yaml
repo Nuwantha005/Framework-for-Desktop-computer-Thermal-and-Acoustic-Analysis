@@ -1,0 +1,48 @@
+name: Two Rounded Rectangles
+case_type: hardcoded_panels_2d
+description: Two rounded rectangles with offset - exported from code
+freestream:
+  velocity:
+  - 10.0
+  - 0.0
+  - 0.0
+components:
+- name: rect_front
+  geometry_file: shapes/rect_front.json
+  transform:
+    translation:
+    - 0.0
+    - 0.0
+    - 0.0
+    rotation_deg: 0.0
+  boundary_condition:
+    type: wall
+- name: rect_back
+  geometry_file: shapes/rect_back.json
+  transform:
+    translation:
+    - -3.0
+    - 0.5
+    - 0.0
+    rotation_deg: 10.0
+  boundary_condition:
+    type: wall
+solver:
+  type: constant_source
+  tolerance: 1.0e-10
+visualization:
+  domain:
+    x_range:
+    - -6
+    - 5
+    y_range:
+    - -4
+    - 4
+  resolution:
+  - 200
+  - 150
+fluid:
+  density: 1.225
+  gravity: 0.0
+  reference_pressure: 101325.0
+  reference_type: freestream

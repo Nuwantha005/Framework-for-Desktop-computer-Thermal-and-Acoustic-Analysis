@@ -143,6 +143,9 @@ class OpenFOAMCaseGenerator:
         self._generate_sample_dict()
         self._generate_run_scripts()
         
+        # Generate mesh convergence config (in sibling directory)
+        self._generate_convergence_config()
+        
         return self.output_dir
     
     def _generate_geometry(self):
@@ -1036,3 +1039,98 @@ FoamFile
         # Make scripts executable
         (self.output_dir / "Allrun").chmod(0o755)
         (self.output_dir / "Allclean").chmod(0o755)
+
+    def _generate_convergence_config(self):
+        """
+        Generate mesh convergence study configuration file.
+        
+        Creates a YAML config file in the openfoam_convergence sibling directory
+        with mesh refinement levels based on the current case settings.
+        """
+        # Convergence config goes in sibling directory
+        # output_dir is typically: validation_results/<case_name>/openfoam
+        convergence_dir = self.output_dir.parent / "openfoam_convergence"
+        config_path = convergence_dir / "config.yaml"
+        
+        # Don't overwrite existing config (user may have customized it)
+        if config_path.exists():
+            return
+        
+        convergence_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Get current mesh settings as base
+        domain = self.domain
+        cells_per_unit = self.mesh_settings.background_cells_per_unit
+        x_len = domain['x'][1] - domain['x'][0]
+        y_len = domain['y'][1] - domain['y'][0]
+        
+        # Base cells (current settings)
+        nx = max(10, int(x_len * cells_per_unit))
+        ny = max(10, int(y_len * cells_per_unit))
+        base_level = self.mesh_settings.refinement_level
+        
+        # Comparison grid based on domain
+        x_range = [domain['x'][0] + 1.0, domain['x'][1] - 1.0]  # Exclude near-boundary
+        y_range = [domain['y'][0] + 1.0, domain['y'][1] - 1.0]
+        
+        config_content = f'''# OpenFOAM Mesh Convergence Study Configuration
+# =============================================
+# Auto-generated for case: {self.case.name}
+# Domain: x=[{domain['x'][0]:.1f}, {domain['x'][1]:.1f}], y=[{domain['y'][0]:.1f}, {domain['y'][1]:.1f}]
+#
+# Modify refinement levels as needed, then run:
+#   python validation/scripts/openfoam_convergence.py cases/<case_name>
+
+# Refinement Levels
+# -----------------
+# Each level specifies blockMesh background cells and snappyHexMesh refinement.
+# blockMesh provides the background mesh (keep relatively coarse).
+# snappyHexMesh refines near surfaces (this drives the accuracy).
+
+refinement_levels:
+  - name: "coarse"
+    blockMesh_cells: [{nx}, {ny}, 1]          # Base resolution
+    snappy_surface_level: {base_level}
+    snappy_feature_level: {base_level}
+
+  - name: "medium"
+    blockMesh_cells: [{int(nx * 1.2)}, {int(ny * 1.2)}, 1]
+    snappy_surface_level: {base_level + 1}
+    snappy_feature_level: {base_level + 1}
+
+  - name: "fine"
+    blockMesh_cells: [{int(nx * 1.5)}, {int(ny * 1.5)}, 1]
+    snappy_surface_level: {base_level + 2}
+    snappy_feature_level: {base_level + 2}
+
+  - name: "very_fine"
+    blockMesh_cells: [{int(nx * 2.0)}, {int(ny * 2.0)}, 1]
+    snappy_surface_level: {base_level + 3}
+    snappy_feature_level: {base_level + 3}
+
+# Convergence Settings
+# --------------------
+convergence:
+  gci_threshold: 0.05           # Grid Convergence Index threshold (5%)
+  refinement_ratio: 1.5         # Approximate refinement ratio between levels
+
+# Comparison Grid (for velocity field comparison)
+# -----------------------------------------------
+# Structured grid in far-field for extracting convergence metrics
+comparison_grid:
+  x_range: [{x_range[0]:.1f}, {x_range[1]:.1f}]
+  y_range: [{y_range[0]:.1f}, {y_range[1]:.1f}]
+  nx: 80
+  ny: 60
+  body_distance: 0.5            # Exclude points within this distance of bodies
+
+# Output Settings
+# ---------------
+output:
+  delete_intermediate_cases: true   # Delete intermediate OF cases after metrics extraction
+  save_final_case: true             # Copy final (finest) case to openfoam/final_case/
+  verbose: true                     # Print detailed progress
+'''
+        
+        with open(config_path, 'w') as f:
+            f.write(config_content)

@@ -15,6 +15,7 @@ from .case_generator import OpenFOAMCaseGenerator
 from .runner import OpenFOAMRunner
 from .geometry_converter import GeometryConverter
 from .simple_generator import SimpleOpenFOAMGenerator
+from .surface_extractor import OpenFOAMSurfaceExtractor
 
 # Re-export foamlib classes for convenience
 from foamlib import FoamCase, FoamFieldFile
@@ -24,6 +25,7 @@ __all__ = [
     'OpenFOAMRunner',
     'GeometryConverter',
     'SimpleOpenFOAMGenerator',
+    'OpenFOAMSurfaceExtractor',
     'FoamCase',
     'FoamFieldFile',
 ]

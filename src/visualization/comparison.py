@@ -692,6 +692,226 @@ class ComparisonVisualizer:
                    linewidth=1.5, zorder=10)
     
     # =========================================================================
+    # Surface Comparison
+    # =========================================================================
+    
+    def compare_surface_distributions(
+        self,
+        surface_data_list: List['SurfaceData'],
+        labels: Optional[List[str]] = None,
+        title: str = "Surface Distributions",
+        quantities: List[str] = ['Vt', 'Cp'],
+        show_by_component: bool = False,
+        figsize: Optional[Tuple[float, float]] = None
+    ) -> Figure:
+        """
+        Compare surface distributions from multiple sources.
+        
+        Plots quantities (Vt, Cp) vs arc length for validation.
+        Typical use: panel method vs OpenFOAM surface data.
+        
+        Args:
+            surface_data_list: List of SurfaceData objects to compare
+            labels: Labels for each dataset (default: source1, source2, ...)
+            title: Figure title
+            quantities: List of quantities to plot ('Vt', 'Cp')
+            show_by_component: If True, plot each component separately
+            figsize: Figure size (width, height)
+        
+        Returns:
+            Figure object
+        """
+        from postprocessing.surface import SurfaceData
+        
+        n_datasets = len(surface_data_list)
+        n_quantities = len(quantities)
+        
+        if labels is None:
+            labels = [f"Source {i+1}" for i in range(n_datasets)]
+        
+        if len(labels) != n_datasets:
+            raise ValueError(
+                f"Number of labels ({len(labels)}) must match "
+                f"number of datasets ({n_datasets})"
+            )
+        
+        # Determine layout
+        if show_by_component:
+            # Group by component
+            n_components = max(
+                int(data.component_id.max()) + 1
+                for data in surface_data_list
+            )
+            nrows = n_components
+            ncols = n_quantities
+        else:
+            # Single row per quantity
+            nrows = n_quantities
+            ncols = 1
+        
+        if figsize is None:
+            figsize = (8 * ncols, 4 * nrows)
+        
+        self.fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
+        if nrows == 1 and ncols == 1:
+            axes = np.array([[axes]])
+        elif nrows == 1:
+            axes = axes.reshape(1, -1)
+        elif ncols == 1:
+            axes = axes.reshape(-1, 1)
+        
+        self.fig.suptitle(title, fontsize=16, y=0.995)
+        
+        # Color scheme for datasets
+        colors = plt.cm.tab10(np.linspace(0, 1, n_datasets))
+        
+        # Plot each quantity
+        for q_idx, quantity in enumerate(quantities):
+            if show_by_component:
+                # Plot each component in separate subplot
+                for comp_id in range(n_components):
+                    ax = axes[comp_id, q_idx]
+                    
+                    for data_idx, (data, label) in enumerate(
+                        zip(surface_data_list, labels)
+                    ):
+                        # Filter to this component
+                        mask = data.component_id == comp_id
+                        if not mask.any():
+                            continue
+                        
+                        s = data.s[mask]
+                        y = getattr(data, quantity)[mask]
+                        
+                        ax.plot(
+                            s, y,
+                            label=label,
+                            color=colors[data_idx],
+                            marker='o' if len(s) < 50 else '',
+                            markersize=3,
+                            linewidth=1.5
+                        )
+                    
+                    ax.set_xlabel("Arc length (m)")
+                    ax.set_ylabel(self._get_quantity_label(quantity))
+                    ax.set_title(f"Component {comp_id}")
+                    ax.grid(True, alpha=0.3)
+                    ax.legend()
+            else:
+                # Plot all components together
+                ax = axes[q_idx, 0]
+                
+                for data_idx, (data, label) in enumerate(
+                    zip(surface_data_list, labels)
+                ):
+                    # Plot entire surface
+                    ax.plot(
+                        data.s, getattr(data, quantity),
+                        label=label,
+                        color=colors[data_idx],
+                        marker='o' if len(data.s) < 100 else '',
+                        markersize=3,
+                        linewidth=1.5,
+                        alpha=0.8
+                    )
+                
+                ax.set_xlabel("Arc length (m)")
+                ax.set_ylabel(self._get_quantity_label(quantity))
+                ax.set_title(f"{self._get_quantity_label(quantity)} Distribution")
+                ax.grid(True, alpha=0.3)
+                ax.legend()
+        
+        plt.tight_layout()
+        return self.fig
+    
+    def compute_surface_metrics(
+        self,
+        surface1: 'SurfaceData',
+        surface2: 'SurfaceData',
+        quantity: str = 'Vt',
+        interpolate: bool = True
+    ) -> Dict[str, float]:
+        """
+        Compute error metrics between two surface datasets.
+        
+        Args:
+            surface1: Reference surface data (e.g., panel method)
+            surface2: Comparison surface data (e.g., OpenFOAM)
+            quantity: Quantity to compare ('Vt', 'Cp')
+            interpolate: If True, interpolate surface2 to surface1 arc lengths
+        
+        Returns:
+            Dictionary with error metrics (L2, Linf, RMS, MAE)
+        """
+        y1 = getattr(surface1, quantity)
+        y2_orig = getattr(surface2, quantity)
+        
+        if interpolate:
+            # Interpolate surface2 to surface1 arc lengths
+            from scipy.interpolate import interp1d
+            
+            # Only interpolate within overlapping range
+            s_min = max(surface1.s.min(), surface2.s.min())
+            s_max = min(surface1.s.max(), surface2.s.max())
+            
+            # Filter surface1 to overlapping range
+            mask1 = (surface1.s >= s_min) & (surface1.s <= s_max)
+            s1 = surface1.s[mask1]
+            y1 = y1[mask1]
+            
+            # Interpolate surface2
+            interp_func = interp1d(
+                surface2.s, y2_orig,
+                kind='linear', bounds_error=False, fill_value='extrapolate'
+            )
+            y2 = interp_func(s1)
+        else:
+            # Assume same arc length spacing
+            if len(surface1.s) != len(surface2.s):
+                raise ValueError(
+                    "Surface datasets have different lengths. "
+                    "Use interpolate=True."
+                )
+            y2 = y2_orig
+        
+        # Compute metrics
+        diff = y1 - y2
+        l2_norm = np.linalg.norm(diff) / np.sqrt(len(diff))
+        linf_norm = np.abs(diff).max()
+        rms = np.sqrt(np.mean(diff**2))
+        mae = np.mean(np.abs(diff))
+        
+        # Relative errors (avoid division by zero)
+        y1_max = np.abs(y1).max()
+        if y1_max > 1e-10:
+            rel_l2 = l2_norm / y1_max
+            rel_linf = linf_norm / y1_max
+        else:
+            rel_l2 = np.nan
+            rel_linf = np.nan
+        
+        return {
+            'L2': l2_norm,
+            'Linf': linf_norm,
+            'RMS': rms,
+            'MAE': mae,
+            'rel_L2': rel_l2,
+            'rel_Linf': rel_linf
+        }
+    
+    @staticmethod
+    def _get_quantity_label(quantity: str) -> str:
+        """Get axis label for quantity."""
+        labels = {
+            'Vt': r'Tangential Velocity $V_t$ (m/s)',
+            'Cp': r'Pressure Coefficient $C_p$',
+            'x': 'X (m)',
+            'y': 'Y (m)',
+            's': 'Arc Length (m)'
+        }
+        return labels.get(quantity, quantity)
+    
+    # =========================================================================
     # Save/Show
     # =========================================================================
     

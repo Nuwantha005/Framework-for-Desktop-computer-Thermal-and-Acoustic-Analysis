@@ -16,6 +16,7 @@ from .fluid import FluidState, ReferenceCondition
 from .pipeline import PostProcessor, ProcessorPipeline
 from .pressure import PressureProcessor
 from .velocity_potential import VelocityPotentialProcessor
+from .surface import SurfaceData, SurfaceDataExtractor
 
 __all__ = [
     # Field containers
@@ -31,4 +32,7 @@ __all__ = [
     # Processors
     "PressureProcessor",
     "VelocityPotentialProcessor",
+    # Surface data
+    "SurfaceData",
+    "SurfaceDataExtractor",
 ]

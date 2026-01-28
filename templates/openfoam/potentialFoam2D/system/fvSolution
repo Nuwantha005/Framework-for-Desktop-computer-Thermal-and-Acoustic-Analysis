@@ -1,0 +1,57 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      fvSolution;
+}
+
+solvers
+{
+    Phi
+    {
+        solver          GAMG;
+        smoother        DIC;
+        tolerance       1e-06;
+        relTol          0.01;
+    }
+
+    p
+    {
+        $Phi;
+    }
+
+    U
+    {
+        solver          smoothSolver;
+        smoother        symGaussSeidel;
+        tolerance       1e-06;
+        relTol          0.1;
+    }
+}
+
+potentialFlow
+{
+    nNonOrthogonalCorrectors 3;
+}
+
+SIMPLE
+{
+    nNonOrthogonalCorrectors 0;
+    consistent          yes;
+    residualControl
+    {
+        p               1e-4;
+        U               1e-4;
+    }
+}
+
+relaxationFactors
+{
+    equations
+    {
+        U               0.9;
+        p               0.3;
+    }
+}

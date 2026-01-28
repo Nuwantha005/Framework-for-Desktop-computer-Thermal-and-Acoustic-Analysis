@@ -780,14 +780,19 @@ class ComparisonVisualizer:
                         if not mask.any():
                             continue
                         
-                        s = data.s[mask]
-                        y = getattr(data, quantity)[mask]
+                        s_comp = data.s[mask]
+                        y_comp = getattr(data, quantity)[mask]
+                        
+                        # Sort by arc length before plotting
+                        sort_idx = np.argsort(s_comp)
+                        s_sorted = s_comp[sort_idx]
+                        y_sorted = y_comp[sort_idx]
                         
                         ax.plot(
-                            s, y,
+                            s_sorted, y_sorted,
                             label=label,
                             color=colors[data_idx],
-                            marker='o' if len(s) < 50 else '',
+                            marker='o' if len(s_sorted) < 50 else '',
                             markersize=3,
                             linewidth=1.5
                         )
@@ -804,9 +809,14 @@ class ComparisonVisualizer:
                 for data_idx, (data, label) in enumerate(
                     zip(surface_data_list, labels)
                 ):
+                    # Sort by arc length before plotting to ensure correct connection order
+                    sort_idx = np.argsort(data.s)
+                    s_sorted = data.s[sort_idx]
+                    y_sorted = getattr(data, quantity)[sort_idx]
+                    
                     # Plot entire surface
                     ax.plot(
-                        data.s, getattr(data, quantity),
+                        s_sorted, y_sorted,
                         label=label,
                         color=colors[data_idx],
                         marker='o' if len(data.s) < 100 else '',
@@ -850,18 +860,40 @@ class ComparisonVisualizer:
             # Interpolate surface2 to surface1 arc lengths
             from scipy.interpolate import interp1d
             
+            # Sort surface1 data by arc length
+            sort_idx1 = np.argsort(surface1.s)
+            s1_sorted = surface1.s[sort_idx1]
+            y1_sorted = y1[sort_idx1]
+            
+            # Sort surface2 data by arc length (required for interp1d)
+            sort_idx2 = np.argsort(surface2.s)
+            s2_sorted = surface2.s[sort_idx2]
+            y2_sorted = y2_orig[sort_idx2]
+            
+            # Handle duplicate s values in surface2 by averaging
+            # interp1d requires strictly increasing x values
+            unique_s, inverse_indices = np.unique(s2_sorted, return_inverse=True)
+            if len(unique_s) < len(s2_sorted):
+                # Have duplicates - average y values at same s location
+                y2_unique = np.zeros(len(unique_s))
+                for i in range(len(unique_s)):
+                    mask = inverse_indices == i
+                    y2_unique[i] = np.mean(y2_sorted[mask])
+                s2_sorted = unique_s
+                y2_sorted = y2_unique
+            
             # Only interpolate within overlapping range
-            s_min = max(surface1.s.min(), surface2.s.min())
-            s_max = min(surface1.s.max(), surface2.s.max())
+            s_min = max(s1_sorted.min(), s2_sorted.min())
+            s_max = min(s1_sorted.max(), s2_sorted.max())
             
             # Filter surface1 to overlapping range
-            mask1 = (surface1.s >= s_min) & (surface1.s <= s_max)
-            s1 = surface1.s[mask1]
-            y1 = y1[mask1]
+            mask1 = (s1_sorted >= s_min) & (s1_sorted <= s_max)
+            s1 = s1_sorted[mask1]
+            y1 = y1_sorted[mask1]
             
             # Interpolate surface2
             interp_func = interp1d(
-                surface2.s, y2_orig,
+                s2_sorted, y2_sorted,
                 kind='linear', bounds_error=False, fill_value='extrapolate'
             )
             y2 = interp_func(s1)

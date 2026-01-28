@@ -27,9 +27,13 @@ from visualization.comparison import ComparisonVisualizer
 from validation.adapters.openfoam import OpenFOAMSurfaceExtractor, OpenFOAMRunner
 
 
-def extract_panel_surface(case) -> 'SurfaceData':
+def extract_panel_surface(case, openfoam_case_dir: Path) -> 'SurfaceData':
     """
     Run panel method and extract surface data.
+    
+    Args:
+        case: Panel method case
+        openfoam_case_dir: OpenFOAM case directory (to find STL reference geometry)
     
     Returns:
         SurfaceData with Vt, Cp at panel centers
@@ -46,51 +50,59 @@ def extract_panel_surface(case) -> 'SurfaceData':
     print(f"  Cp range: [{solver.Cp.min():.4f}, {solver.Cp.max():.4f}]")
     print(f"  Vt range: [{solver.Vt.min():.4f}, {solver.Vt.max():.4f}]")
     
-    # Extract surface data
+    # Find STL file for geometry projection
+    stl_dir = openfoam_case_dir / "constant" / "triSurface"
+    stl_files = list(stl_dir.glob("*.stl"))
+    reference_stl = str(stl_files[0]) if stl_files else None
+    
+    # Extract surface data with geometry projection
     extractor = SurfaceDataExtractor(case.mesh, solver)
-    surface_data = extractor.extract(arc_length=True)
+    surface_data = extractor.extract(arc_length=True, reference_geometry=reference_stl)
     
     print(f"  Surface points: {len(surface_data.x)}")
+    if reference_stl:
+        print(f"  Using reference geometry: {Path(reference_stl).name}")
     
     return surface_data
 
 
 def extract_openfoam_surface(
     openfoam_case_dir: Path,
-    panel_surface: 'SurfaceData',
+    patch_name: str,
     v_inf: float,
     density: float = 1.0
 ) -> 'SurfaceData':
     """
-    Extract OpenFOAM surface data at panel center locations.
+    Extract OpenFOAM surface data using proper surfaceFieldValue extraction.
     
-    Uses interpolation to sample OpenFOAM fields at the same
-    points where panel method provides data.
+    Uses OpenFOAM's surfaceFieldValue function object to get true face-centered
+    boundary values (not interpolated cell centers). This is the recommended
+    approach for accurate comparison.
     
     Args:
         openfoam_case_dir: Path to OpenFOAM case
-        panel_surface: Panel method surface data (for sampling points)
+        patch_name: Name of wall patch to extract
         v_inf: Freestream velocity
         density: Fluid density
     
     Returns:
-        SurfaceData with interpolated OpenFOAM values
+        SurfaceData with true wall boundary values
     """
     print("\n" + "="*60)
     print("OpenFOAM: Extracting Surface Data")
     print("="*60)
     
-    # First, ensure writeCellCentres has been run
+    # Run postProcess to extract surface data
     runner = OpenFOAMRunner(openfoam_case_dir, verbose=True)
-    print("  Running writeCellCentres...")
-    result = runner.run_write_cell_centres()
+    print("  Running postProcess to extract surface data...")
+    result = runner.run_post_process(fields=['U', 'p'])
     if not result.success:
-        print(f"  WARNING: writeCellCentres failed: {result.stderr}")
+        print(f"  WARNING: postProcess failed: {result.stderr}")
         print("  Attempting to continue anyway...")
     else:
-        print("  ✓ writeCellCentres complete")
+        print("  ✓ postProcess complete")
     
-    # Create extractor
+    # Create extractor and extract surface data
     try:
         extractor = OpenFOAMSurfaceExtractor(openfoam_case_dir, time_idx=-1)
     except FileNotFoundError as e:
@@ -108,43 +120,25 @@ def extract_openfoam_surface(
     except Exception as e:
         raise RuntimeError(f"Failed to create OpenFOAM extractor: {e}")
     
-    # Sample at panel center locations
-    points = np.column_stack([panel_surface.x, panel_surface.y])
-    
-    print(f"  Sampling at {len(points)} panel centers...")
+    # Extract surface data
+    print(f"  Extracting patch: {patch_name}...")
     try:
-        surface_data = extractor.sample_at_points(
-            points,
+        surface_data = extractor.extract(
+            patch_name=patch_name,
             reference_pressure=0.0,
             density=density,
             v_inf=v_inf
         )
     except FileNotFoundError as e:
-        # Check if U or p fields are missing
-        if 'U' in str(e) or 'p' in str(e):
-            # Check if this is a parallel case that needs reconstruction
-            processor_dirs = list(openfoam_case_dir.glob("processor*"))
-            if processor_dirs:
-                raise RuntimeError(
-                    f"\nMissing flow fields in OpenFOAM case!\n"
-                    f"This appears to be a parallel case with {len(processor_dirs)} processor directories.\n"
-                    f"The results need to be reconstructed:\n\n"
-                    f"  cd {openfoam_case_dir}\n"
-                    f"  reconstructPar\n\n"
-                    f"Or use a non-parallel OpenFOAM case (one without processor* directories)."
-                )
-            else:
-                raise RuntimeError(
-                    f"\nMissing flow fields in OpenFOAM case!\n"
-                    f"The case may not have been solved, or fields were cleaned.\n"
-                    f"Try running:\n\n"
-                    f"  cd {openfoam_case_dir}\n"
-                    f"  potentialFoam\n"
-                )
-        raise RuntimeError(f"Failed to sample OpenFOAM fields: {e}")
+        raise RuntimeError(
+            f"\nFailed to extract surface data: {e}\n"
+            f"This usually means postProcess needs to be run first.\n"
+            f"The case should have function objects configured for surface extraction."
+        )
     except Exception as e:
-        raise RuntimeError(f"Failed to sample OpenFOAM fields: {e}")
+        raise RuntimeError(f"Failed to extract surface data: {e}")
     
+    print(f"  Surface points: {len(surface_data.x)}")
     print(f"  Cp range: [{surface_data.Cp.min():.4f}, {surface_data.Cp.max():.4f}]")
     print(f"  Vt range: [{surface_data.Vt.min():.4f}, {surface_data.Vt.max():.4f}]")
     
@@ -201,12 +195,16 @@ def main():
     case = CaseLoader.load_case(args.case_dir)
     
     # Extract panel method surface
-    panel_surface = extract_panel_surface(case)
+    panel_surface = extract_panel_surface(case, args.openfoam_case)
+    
+    # Determine patch name from case (use sanitized component name)
+    from validation.adapters.openfoam.foamlib_generator import sanitize_name
+    patch_name = sanitize_name(case.name)
     
     # Extract OpenFOAM surface
     openfoam_surface = extract_openfoam_surface(
         args.openfoam_case,
-        panel_surface,
+        patch_name,
         v_inf=case.v_inf,
         density=case.density
     )
@@ -217,7 +215,8 @@ def main():
     print("="*60)
     
     viz = ComparisonVisualizer(output_dir=args.output)
-    
+    print("panel usrface s range:", panel_surface.s.min(), panel_surface.s.max())
+    print("openfoam surface s range:", openfoam_surface.s.min(), openfoam_surface.s.max())
     # Plot surface distributions
     fig = viz.compare_surface_distributions(
         surface_data_list=[panel_surface, openfoam_surface],
@@ -241,7 +240,7 @@ def main():
             panel_surface,
             openfoam_surface,
             quantity=quantity,
-            interpolate=False  # Already at same points
+            interpolate=True  # Need to interpolate - different sampling points
         )
         
         print(f"\n{quantity}:")

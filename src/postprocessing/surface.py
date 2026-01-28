@@ -93,7 +93,8 @@ class SurfaceDataExtractor:
     def extract(
         self,
         arc_length: bool = True,
-        component_id: Optional[int] = None
+        component_id: Optional[int] = None,
+        reference_geometry: Optional[str] = None
     ) -> SurfaceData:
         """
         Extract surface quantities from solver results.
@@ -101,6 +102,9 @@ class SurfaceDataExtractor:
         Args:
             arc_length: If True, compute arc length coordinate s
             component_id: If provided, extract only this component
+            reference_geometry: Path to STL file for geometry projection.
+                              If provided, projects panel centers onto reference
+                              geometry for consistent arc length calculation.
         
         Returns:
             SurfaceData with surface flow quantities
@@ -136,7 +140,25 @@ class SurfaceDataExtractor:
         # Compute arc length if requested
         s = None
         if arc_length:
-            s = self._compute_arc_length(x, y)
+            if reference_geometry is not None:
+                # Use geometry projection for consistent arc length
+                try:
+                    import sys
+                    from pathlib import Path
+                    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+                    from validation.geometry_mapper import GeometryMapper
+                    
+                    mapper = GeometryMapper.from_stl(reference_geometry)
+                    query_points = np.column_stack([x, y])
+                    s = mapper.get_arc_length(query_points)
+                    s = mapper.normalize_arc_length(s, landmark="min_x")
+                except Exception as e:
+                    print(f"Warning: Geometry projection failed: {e}")
+                    print(f"Falling back to direct arc length calculation")
+                    s = self._compute_arc_length(x, y)
+            else:
+                # Direct arc length calculation
+                s = self._compute_arc_length(x, y)
         
         # Normal velocity (should be ~0 for Neumann BC)
         Vn = None  # Panel method enforces Vn=0, no need to store

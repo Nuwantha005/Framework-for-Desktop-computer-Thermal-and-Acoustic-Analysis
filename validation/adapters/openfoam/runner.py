@@ -199,18 +199,66 @@ class OpenFOAMRunner:
         """Run surfaceFeatureExtract for snappyHexMesh."""
         return self._run_command("surfaceFeatureExtract", "surfaceFeatureExtract", timeout)
     
-    def run_snappy(self, overwrite: bool = True, timeout: float = 1800) -> RunResult:
+    def run_decompose_par(self, timeout: float = 300) -> RunResult:
+        """
+        Decompose mesh for parallel processing.
+        
+        Args:
+            timeout: Timeout in seconds
+        """
+        return self._run_command("decomposePar", "decomposePar", timeout)
+    
+    def run_reconstruct_par(self, timeout: float = 600) -> RunResult:
+        """
+        Reconstruct mesh after parallel processing.
+        
+        Args:
+            timeout: Timeout in seconds
+        """
+        return self._run_command("reconstructPar", "reconstructPar", timeout)
+    
+    def run_snappy(self, overwrite: bool = True, parallel: bool = False, timeout: float = 1800) -> RunResult:
         """
         Run snappyHexMesh to refine mesh around bodies.
         
         Args:
             overwrite: If True, overwrite existing mesh
+            parallel: If True, run in parallel (decompose → snappy → reconstruct)
             timeout: Timeout in seconds (default 30 min)
         """
-        cmd = "snappyHexMesh"
-        if overwrite:
-            cmd += " -overwrite"
-        return self._run_command(cmd, "snappyHexMesh", timeout)
+        if parallel:
+            # Parallel snappyHexMesh workflow
+            # 1. Decompose background mesh
+            result = self.run_decompose_par()
+            if not result.success:
+                if self.verbose:
+                    print("ERROR: decomposePar failed")
+                return result
+            
+            # 2. Run snappyHexMesh in parallel
+            cmd = "mpirun -np $(getNumberOfProcessors) snappyHexMesh -parallel"
+            if overwrite:
+                cmd += " -overwrite"
+            result = self._run_command(cmd, "snappyHexMesh", timeout)
+            
+            if not result.success:
+                if self.verbose:
+                    print("ERROR: parallel snappyHexMesh failed")
+                return result
+            
+            # 3. Reconstruct mesh
+            result = self.run_reconstruct_par()
+            if not result.success:
+                if self.verbose:
+                    print("WARNING: reconstructPar failed, but mesh may be usable")
+            
+            return result
+        else:
+            # Serial snappyHexMesh
+            cmd = "snappyHexMesh"
+            if overwrite:
+                cmd += " -overwrite"
+            return self._run_command(cmd, "snappyHexMesh", timeout)
     
     def run_check_mesh(self, timeout: float = 300) -> RunResult:
         """Run checkMesh to verify mesh quality."""
@@ -224,11 +272,61 @@ class OpenFOAMRunner:
             solver: Solver name (potentialFoam, simpleFoam, etc.)
             timeout: Timeout in seconds (default 1 hour)
         """
-        return self._run_command(solver, solver, timeout)
+        # Add -writep flag for potentialFoam to write pressure field
+        cmd = solver
+        if solver == "potentialFoam":
+            cmd += " -writep"
+        
+        return self._run_command(cmd, solver, timeout)
     
     def run_write_cell_centres(self, timeout: float = 300) -> RunResult:
         """Run postProcess to write cell centre coordinates (needed for comparison)."""
         return self._run_command("postProcess -func writeCellCentres", "writeCellCentres", timeout)
+    
+    def run_post_process(
+        self,
+        fields: Optional[List[str]] = None,
+        func: Optional[str] = None,
+        timeout: float = 300
+    ) -> RunResult:
+        """
+        Run postProcess to extract surface data or execute function objects.
+        
+        This method executes OpenFOAM's postProcess utility to:
+        - Execute function objects defined in controlDict
+        - Extract surface data (wall velocities, pressures)
+        - Process field data for validation
+        
+        Args:
+            fields: List of fields to process (e.g., ['U', 'p']). If None, processes all.
+            func: Specific function to execute (e.g., 'writeCellCentres'). If None, executes all function objects.
+            timeout: Timeout in seconds
+        
+        Returns:
+            RunResult with execution status
+        
+        Examples:
+            # Execute all function objects (e.g., wallSlipVelocity)
+            runner.run_post_process()
+            
+            # Execute specific function
+            runner.run_post_process(func='writeCellCentres')
+            
+            # Process specific fields
+            runner.run_post_process(fields=['U', 'p'])
+        """
+        # Build command
+        cmd_parts = ["postProcess"]
+        
+        if func is not None:
+            cmd_parts.append(f"-func {func}")
+        
+        if fields is not None:
+            fields_str = " ".join(fields)
+            cmd_parts.append(f"-fields '({fields_str})'")
+        
+        cmd = " ".join(cmd_parts)
+        return self._run_command(cmd, "postProcess", timeout)
     
     def run_sample(self, timeout: float = 300) -> RunResult:
         """Run postProcess to sample fields."""
@@ -237,7 +335,8 @@ class OpenFOAMRunner:
     def run_all(
         self,
         solver: str = "potentialFoam",
-        use_snappy: bool = True
+        use_snappy: bool = True,
+        parallel_snappy: bool = False
     ) -> bool:
         """
         Run complete workflow: mesh → solve → sample.
@@ -245,6 +344,7 @@ class OpenFOAMRunner:
         Args:
             solver: Solver to use
             use_snappy: If True, use snappyHexMesh for body refinement
+            parallel_snappy: If True and use_snappy=True, run snappyHexMesh in parallel
         
         Returns:
             True if all steps succeeded
@@ -270,7 +370,7 @@ class OpenFOAMRunner:
                 if not result.success:
                     print(f"WARNING: surfaceFeatureExtract failed, continuing...")
                 
-                result = self.run_snappy()
+                result = self.run_snappy(parallel=parallel_snappy)
                 if not result.success:
                     print(f"ERROR: snappyHexMesh failed")
                     return False

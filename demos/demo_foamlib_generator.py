@@ -17,28 +17,57 @@ from core.io import CaseLoader
 from validation.adapters.openfoam import FoamlibCaseGenerator, MeshSettings
 
 def main():
-    # Load a simple case
-    case_path = Path("cases/single_square")
+    import argparse
     
-    if not case_path.exists():
-        print(f"ERROR: Case not found: {case_path}")
-        print("Please run from project root directory")
+    parser = argparse.ArgumentParser(
+        description="Test foamlib-based OpenFOAM case generator"
+    )
+    parser.add_argument(
+        "--case",
+        type=Path,
+        default=Path("cases/single_square"),
+        help="Path to case directory (default: cases/single_square)"
+    )
+    parser.add_argument(
+        "--mesh-level",
+        type=int,
+        default=-1,
+        help="Mesh level index for parametric cases (default: -1 = finest)"
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("validation_results/test_foamlib/openfoam"),
+        help="Output directory for OpenFOAM case"
+    )
+    
+    args = parser.parse_args()
+    
+    if not args.case.exists():
+        print(f"ERROR: Case not found: {args.case}")
+        print("Please check the path")
         return 1
     
     print("=" * 70)
     print("Testing Foamlib-Based OpenFOAM Case Generator")
     print("=" * 70)
     
-    # Load panel method case
-    print(f"\n1. Loading panel method case: {case_path}")
-    case = CaseLoader.load_case(case_path)
+    # Load panel method case at specified mesh level
+    print(f"\n1. Loading panel method case: {args.case}")
+    print(f"   Mesh level: {args.mesh_level} ({'finest' if args.mesh_level == -1 else f'level {args.mesh_level}'})")
+    case = CaseLoader.load_case(args.case, mesh_level_index=args.mesh_level)
     print(f"   ✓ Loaded: {case.name}")
+    
+    # Display mesh info for parametric cases
+    if case.num_mesh_levels > 0:
+        print(f"   Available mesh levels: {case.num_mesh_levels}")
+        print(f"   Current resolution: {case.mesh_level}")
+    
     print(f"   Components: {case.mesh.num_panels} panels")
     print(f"   Freestream: {case.freestream}")
     
     # Setup output directory
-    output_dir = Path("validation_results") / "test_foamlib" / "openfoam"
-    print(f"\n2. Creating OpenFOAM case at: {output_dir}")
+    print(f"\n2. Creating OpenFOAM case at: {args.output}")
     
     # Create generator with moderate mesh settings
     mesh_settings = MeshSettings(
@@ -49,7 +78,7 @@ def main():
     
     generator = FoamlibCaseGenerator(
         case=case,
-        output_dir=output_dir,
+        output_dir=args.output,
         mesh_settings=mesh_settings,
         n_processors=4  # For parallel snappyHexMesh
     )

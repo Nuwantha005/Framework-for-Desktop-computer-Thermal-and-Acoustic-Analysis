@@ -2,6 +2,17 @@
 OpenFOAM runner using foamlib.
 
 Wraps foamlib.FoamCase for executing OpenFOAM commands.
+
+2D Mesh Workflow (ExtrudeMesh Method):
+    The runner implements proper 2D meshing via extrudeMesh:
+    
+    blockMesh → snappyHexMesh → extrudeMesh → potentialFoam
+    
+    The 'empty' boundary type for front/back patches must be set in:
+    - blockMeshDict (preserved through snappyHexMesh and extrudeMesh)
+    - 0/U and 0/p (boundary conditions)
+    
+    extrudeMesh collapses the mesh to single cell thickness in z-direction.
 """
 
 from __future__ import annotations
@@ -225,6 +236,9 @@ class OpenFOAMRunner:
             overwrite: If True, overwrite existing mesh
             parallel: If True, run in parallel (decompose → snappy → reconstruct)
             timeout: Timeout in seconds (default 30 min)
+        
+        Note:
+            After snappyHexMesh, run extrudeMesh to collapse to proper 2D mesh.
         """
         if parallel:
             # Parallel snappyHexMesh workflow
@@ -259,6 +273,23 @@ class OpenFOAMRunner:
             if overwrite:
                 cmd += " -overwrite"
             return self._run_command(cmd, "snappyHexMesh", timeout)
+    
+    def run_extrude_mesh(self, timeout: float = 300) -> RunResult:
+        """
+        Run extrudeMesh to collapse 3D mesh to proper 2D mesh.
+        
+        This step is critical for 2D simulations after snappyHexMesh:
+        - Collapses to single cell thickness in z-direction
+        - Converts front/back patches from 'patch' to 'empty' type
+        - Creates proper 2D mesh topology for OpenFOAM
+        
+        Args:
+            timeout: Timeout in seconds
+        
+        Returns:
+            RunResult with execution status
+        """
+        return self._run_command("extrudeMesh", "extrudeMesh", timeout)
     
     def run_check_mesh(self, timeout: float = 300) -> RunResult:
         """Run checkMesh to verify mesh quality."""
@@ -336,15 +367,17 @@ class OpenFOAMRunner:
         self,
         solver: str = "potentialFoam",
         use_snappy: bool = True,
-        parallel_snappy: bool = False
+        parallel_snappy: bool = False,
+        use_extrude: bool = True
     ) -> bool:
         """
-        Run complete workflow: mesh → solve → sample.
+        Run complete workflow: mesh → extrude → solve → sample.
         
         Args:
             solver: Solver to use
             use_snappy: If True, use snappyHexMesh for body refinement
             parallel_snappy: If True and use_snappy=True, run snappyHexMesh in parallel
+            use_extrude: If True, run extrudeMesh after snappyHexMesh (recommended for 2D)
         
         Returns:
             True if all steps succeeded
@@ -374,6 +407,13 @@ class OpenFOAMRunner:
                 if not result.success:
                     print(f"ERROR: snappyHexMesh failed")
                     return False
+                
+                # Run extrudeMesh to collapse to 2D (critical for proper 2D mesh)
+                if use_extrude:
+                    result = self.run_extrude_mesh()
+                    if not result.success:
+                        print(f"ERROR: extrudeMesh failed")
+                        return False
             else:
                 if self.verbose:
                     print("  No STL files found, skipping snappyHexMesh")

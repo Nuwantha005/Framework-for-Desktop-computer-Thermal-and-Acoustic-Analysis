@@ -1,0 +1,52 @@
+name: "Cylinder and Square"
+case_type: "parametric_2d"
+description: "Test case with mixed geometry types - cylinder and rectangle"
+
+freestream:
+  velocity: [1.0, 0.0, 0.0]
+
+components:
+  - name: "cylinder"
+    geometry:
+      type: "circle"
+      parameters:
+        radius: 0.5
+        center: [0.0, 0.0]
+    mesh_levels:
+      - [16]      # Level 0: 16 panels (coarse)
+      - [32]      # Level 1: 32 panels
+      - [64]      # Level 2: 64 panels
+      - [128]     # Level 3: 128 panels (fine)
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation_deg: 0.0
+    boundary_condition:
+      type: "wall"
+  
+  - name: "square"
+    geometry:
+      type: "rectangle"
+      parameters:
+        width: 0.8
+        height: 0.8
+        center: [0.0, 0.0]
+    mesh_levels:
+      - [2, 2]      # Level 0: 8 panels (coarse)
+      - [4, 4]      # Level 1: 16 panels
+      - [8, 8]      # Level 2: 32 panels
+      - [16, 16]    # Level 3: 64 panels (fine)
+    transform:
+      translation: [2.5, 0.0, 0.0]
+      rotation_deg: 0.0
+    boundary_condition:
+      type: "wall"
+
+solver:
+  type: "constant_source"
+  tolerance: 1.0e-10
+
+visualization:
+  domain:
+    x_range: [-2.0, 4.0]
+    y_range: [-2.0, 2.0]
+  resolution: [200, 133]

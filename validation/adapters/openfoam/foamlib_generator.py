@@ -3,6 +3,20 @@ OpenFOAM case generator using foamlib (template-based approach).
 
 Replaces the old f-string/regex-based generator with a clean foamlib implementation.
 Uses template cloning and structured edits for robustness and maintainability.
+
+2D Mesh Workflow (ExtrudeMesh Method):
+    This generator prepares cases for proper 2D OpenFOAM meshes using extrudeMesh:
+    
+    1. blockMesh creates background mesh with front/back as 'empty' type
+    2. snappyHexMesh refines around bodies (preserves empty patches)
+    3. extrudeMesh collapses to 2D with single cell thickness (preserves empty patches)
+    4. potentialFoam solves on proper 2D mesh
+    
+    The 'empty' boundary type must be set consistently in:
+    - system/blockMeshDict (mesh topology)
+    - 0/U, 0/p (boundary conditions)
+    
+    This ensures single cell layer in z-direction for clean surface extraction.
 """
 
 from __future__ import annotations
@@ -43,13 +57,14 @@ class FoamlibCaseGenerator:
     - No f-strings or regex - uses foamlib's structured API
     - Template ensures valid OpenFOAM syntax
     - Easier to maintain and extend
-    - Ready for Phase 5 parametric geometry
+    - Supports parametric geometry (Phase 5)
     
     Usage:
         from core.io import CaseLoader
         from validation.adapters.openfoam import FoamlibCaseGenerator, MeshSettings
         
-        case = CaseLoader.load_case("cases/single_square")
+        # For parametric cases, load at finest mesh level for accurate validation
+        case = CaseLoader.load_case("cases/single_square", mesh_level_index=-1)
         
         generator = FoamlibCaseGenerator(
             case=case,
@@ -58,6 +73,11 @@ class FoamlibCaseGenerator:
         )
         
         of_case_dir = generator.generate()
+    
+    Note:
+        For parametric cases (case_type="parametric_2d"), it's recommended to use
+        the finest mesh level (mesh_level_index=-1) when loading the case to ensure
+        the OpenFOAM geometry matches the highest resolution available.
     """
     
     # Template location (relative to this file)
@@ -173,7 +193,12 @@ class FoamlibCaseGenerator:
             self.component_names.append(safe_name)
     
     def _set_boundary_conditions(self, foam_case: FoamCase):
-        """Set initial and boundary conditions using foamlib."""
+        """
+        Set initial and boundary conditions using foamlib.
+        
+        Note: front/back patches use 'empty' type for proper 2D OpenFOAM meshes.
+        This must be set consistently in blockMeshDict, 0/U, and 0/p.
+        """
         # Freestream velocity
         vx, vy, vz = self.case.freestream
         
@@ -182,7 +207,8 @@ class FoamlibCaseGenerator:
             U.dimensions = DimensionSet(length=1, time=-1)
             U.internal_field = [vx, vy, vz]
             U.boundary_field["inlet"]["value"] = [vx, vy, vz]
-            # Outlet, top, bottom, front, back remain from template
+            # Outlet, top, bottom remain from template
+            # front/back use 'empty' type (set in template)
             
             # Add wall patches for bodies (if any)
             # For inviscid potential flow, use slip condition to allow tangential velocity

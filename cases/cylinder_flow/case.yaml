@@ -1,5 +1,5 @@
 name: "Cylinder Flow"
-case_type: "hardcoded_panels_2d"
+case_type: "parametric_2d"
 description: "Flow around cylinder - analytical validation case (Cp = 1 - 4*sin^2(theta))"
 
 freestream:
@@ -7,7 +7,17 @@ freestream:
 
 components:
   - name: "cylinder"
-    geometry_file: "shapes/cylinder.json"
+    geometry:
+      type: "circle"
+      parameters:
+        radius: 0.5
+        center: [0.0, 0.0]
+    mesh_levels:
+      - [16]      # Level 0: 16 panels (coarse)
+      - [32]      # Level 1: 32 panels
+      - [64]      # Level 2: 64 panels
+      - [128]     # Level 3: 128 panels
+      - [256]     # Level 4: 256 panels (fine)
     transform:
       translation: [0.0, 0.0, 0.0]
       rotation_deg: 0.0

@@ -57,6 +57,10 @@ class ComponentConfig(BaseModel):
     name: str = Field(..., description="Unique component identifier")
     geometry_file: Optional[str] = Field(None, description="Path to geometry file (JSON/XY) - for legacy cases")
     geometry: Optional[GeometryConfig] = Field(None, description="Parametric geometry definition")
+    mesh_levels: Optional[List[List[int]]] = Field(
+        None,
+        description="Resolution levels for parametric geometry (each list unpacks to generator params)"
+    )
     transform: TransformConfig = Field(
         default_factory=TransformConfig,
         description="Placement transform"
@@ -80,6 +84,12 @@ class ComponentConfig(BaseModel):
             raise ValueError(f"Component '{self.name}': must specify either 'geometry_file' or 'geometry'")
         if self.geometry_file is not None and self.geometry is not None:
             raise ValueError(f"Component '{self.name}': cannot specify both 'geometry_file' and 'geometry'")
+        
+        # Validate mesh_levels is provided for parametric geometry
+        if self.geometry is not None and self.mesh_levels is None:
+            raise ValueError(f"Component '{self.name}': parametric geometry requires 'mesh_levels'")
+        if self.geometry_file is not None and self.mesh_levels is not None:
+            raise ValueError(f"Component '{self.name}': 'mesh_levels' only valid for parametric geometry")
 
 
 class SolverConfig(BaseModel):
@@ -218,11 +228,6 @@ class SimulationConfig(BaseModel):
     freestream: dict = Field(
         default={"velocity": [1.0, 0.0, 0.0]},
         description="Freestream conditions"
-    )
-    
-    mesh_levels: Optional[List[List[int]]] = Field(
-        default=None,
-        description="Resolution levels for parametric geometry (each list unpacks to generator params)"
     )
     
     components: List[ComponentConfig] = Field(

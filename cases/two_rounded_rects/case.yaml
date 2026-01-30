@@ -1,29 +1,45 @@
 name: Two Rounded Rectangles
-case_type: hardcoded_panels_2d
-description: Two rounded rectangles with offset - exported from code
+case_type: parametric_2d
+description: Two rounded rectangles with offset - parametric geometry
+
 freestream:
-  velocity:
-    - 10.0
-    - 0.0
-    - 0.0
+  velocity: [10.0, 0.0, 0.0]
+
 components:
   - name: rect_front
-    geometry_file: shapes/rect_front.json
+    geometry:
+      type: "rounded_rectangle"
+      parameters:
+        width: 2.0
+        height: 1.0
+        corner_radius: 0.083
+        center: [0.0, 0.0]
+    mesh_levels:
+      - [4, 2]      # Level 0: 24 panels per rect (coarse)
+      - [6, 3]      # Level 1: 36 panels per rect (original)
+      - [12, 6]     # Level 2: 72 panels per rect
+      - [24, 12]    # Level 3: 144 panels per rect (fine)
     transform:
-      translation:
-        - 0.0
-        - 0.0
-        - 0.0
+      translation: [0.0, 0.0, 0.0]
       rotation_deg: 0.0
     boundary_condition:
       type: wall
+  
   - name: rect_back
-    geometry_file: shapes/rect_back.json
+    geometry:
+      type: "rounded_rectangle"
+      parameters:
+        width: 2.0
+        height: 1.0
+        corner_radius: 0.083
+        center: [0.0, 0.0]
+    mesh_levels:
+      - [4, 2]      # Level 0: 24 panels per rect (coarse)
+      - [6, 3]      # Level 1: 36 panels per rect (original)
+      - [12, 6]     # Level 2: 72 panels per rect
+      - [24, 12]    # Level 3: 144 panels per rect (fine)
     transform:
-      translation:
-        - -3.0
-        - 0.5
-        - 0.0
+      translation: [-3.0, 0.5, 0.0]
       rotation_deg: 10.0
     boundary_condition:
       type: wall

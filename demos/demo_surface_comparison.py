@@ -163,6 +163,12 @@ def main():
         help="Path to OpenFOAM case directory"
     )
     parser.add_argument(
+        "--mesh-level",
+        type=int,
+        default=-1,
+        help="Mesh level index for parametric cases (default: -1 = finest)"
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -192,7 +198,14 @@ def main():
     
     # Load case
     print(f"\nLoading case: {args.case_dir}")
-    case = CaseLoader.load_case(args.case_dir)
+    print(f"  Using mesh level: {args.mesh_level} ({'finest' if args.mesh_level == -1 else f'level {args.mesh_level}'})")
+    case = CaseLoader.load_case(args.case_dir, mesh_level_index=args.mesh_level)
+    
+    # Display mesh info for parametric cases
+    if case.num_mesh_levels > 0:
+        print(f"  Available mesh levels: {case.num_mesh_levels}")
+        print(f"  Current resolution: {case.mesh_level}")
+        print(f"  Total panels: {case.num_panels}")
     
     # Extract panel method surface
     panel_surface = extract_panel_surface(case, args.openfoam_case)

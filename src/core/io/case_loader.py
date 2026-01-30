@@ -58,32 +58,36 @@ class CaseLoader:
         Args:
             config: Validated simulation config
             base_path: Base directory for resolving relative paths
-            mesh_level_index: Index into mesh_levels for parametric geometry (default=0)
+            mesh_level_index: Index into per-component mesh_levels for parametric geometry (default=0)
         
         Returns:
             Scene object
         """
         components = []
         
-        # Get resolution tuple for parametric geometry
-        resolution = None
-        if config.mesh_levels is not None and len(config.mesh_levels) > 0:
-            if mesh_level_index < 0 or mesh_level_index >= len(config.mesh_levels):
-                raise IndexError(
-                    f"mesh_level_index {mesh_level_index} out of range. "
-                    f"Available levels: 0 to {len(config.mesh_levels) - 1}"
-                )
-            resolution = config.mesh_levels[mesh_level_index]
-        
         for comp_config in config.components:
             # Load geometry: parametric or file-based
             if comp_config.geometry is not None:
-                # Parametric geometry
-                if resolution is None:
+                # Parametric geometry - get resolution from component's mesh_levels
+                if comp_config.mesh_levels is None or len(comp_config.mesh_levels) == 0:
                     raise ValueError(
                         f"Component '{comp_config.name}' uses parametric geometry but "
-                        f"no mesh_levels defined in case config"
+                        f"no mesh_levels defined"
                     )
+                
+                # Handle negative indexing
+                num_levels = len(comp_config.mesh_levels)
+                level_idx = mesh_level_index
+                if level_idx < 0:
+                    level_idx = num_levels + level_idx
+                
+                if level_idx < 0 or level_idx >= num_levels:
+                    raise IndexError(
+                        f"Component '{comp_config.name}': mesh_level_index {mesh_level_index} out of range. "
+                        f"Available levels: 0 to {num_levels - 1}"
+                    )
+                
+                resolution = comp_config.mesh_levels[level_idx]
                 geom_def = {
                     "type": comp_config.geometry.type,
                     "parameters": comp_config.geometry.parameters
@@ -186,9 +190,13 @@ class CaseLoader:
             # or use finest level:
             case = CaseLoader.load_case('cases/single_square', mesh_level_index=-1)
         
+        Note:
+            Each component with parametric geometry has its own mesh_levels.
+            The mesh_level_index applies to all parametric components in the case.
+        
         Args:
             case_dir: Path to case directory (containing case.yaml)
-            mesh_level_index: Index into mesh_levels for parametric geometry (default=0, use -1 for finest)
+            mesh_level_index: Index into per-component mesh_levels for parametric geometry (default=0, use -1 for finest)
         
         Returns:
             Case object with scene, config, and helper properties
@@ -200,14 +208,21 @@ class CaseLoader:
             raise FileNotFoundError(f"No case.yaml found in {case_dir}")
         
         # Handle negative indexing for mesh levels (e.g., -1 for finest)
+        # Note: For simplicity, we assume all components have the same number of levels
+        # If they differ, the first parametric component determines the index conversion
         if mesh_level_index < 0:
-            # Load config to get number of levels
+            # Load config to get number of levels from first parametric component
             with open(case_file, 'r') as f:
                 raw_config = yaml.safe_load(f)
             config = SimulationConfig(**raw_config)
-            if config.mesh_levels is not None:
-                mesh_level_index = len(config.mesh_levels) + mesh_level_index
+            
+            # Find first parametric component
+            for comp in config.components:
+                if comp.mesh_levels is not None:
+                    mesh_level_index = len(comp.mesh_levels) + mesh_level_index
+                    break
             else:
+                # No parametric components, default to 0
                 mesh_level_index = 0
         
         scene, config = CaseLoader.load(case_file, mesh_level_index=mesh_level_index)

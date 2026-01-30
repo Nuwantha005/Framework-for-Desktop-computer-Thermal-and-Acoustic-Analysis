@@ -93,37 +93,63 @@ class Case:
     
     @property
     def num_mesh_levels(self) -> int:
-        """Number of mesh levels available (0 for non-parametric cases)."""
-        if self.config.mesh_levels is None:
-            return 0
-        return len(self.config.mesh_levels)
+        """
+        Number of mesh levels available (0 for non-parametric cases).
+        
+        Returns the number of levels from the first parametric component.
+        If components have different numbers of levels, this returns the first one found.
+        """
+        for comp in self.config.components:
+            if comp.mesh_levels is not None:
+                return len(comp.mesh_levels)
+        return 0
     
     @property
-    def mesh_level(self) -> Optional[list[int]]:
-        """Current mesh resolution tuple (e.g., [8, 8] or [32])."""
-        if self.config.mesh_levels is None or len(self.config.mesh_levels) == 0:
-            return None
-        return self.config.mesh_levels[self.mesh_level_index]
+    def mesh_level(self) -> Optional[dict[str, list[int]]]:
+        """
+        Current mesh resolution for each parametric component.
+        
+        Returns:
+            Dictionary mapping component names to their resolution tuples,
+            e.g., {"square": [8, 8], "cylinder": [32]}
+            Returns None if no parametric components.
+        """
+        levels = {}
+        for comp in self.config.components:
+            if comp.mesh_levels is not None and len(comp.mesh_levels) > 0:
+                # Handle negative indexing
+                idx = self.mesh_level_index
+                if idx < 0:
+                    idx = len(comp.mesh_levels) + idx
+                if 0 <= idx < len(comp.mesh_levels):
+                    levels[comp.name] = comp.mesh_levels[idx]
+        return levels if levels else None
     
     def reload_at_level(self, level_index: int) -> Case:
         """
         Reload case at different mesh level.
         
         Args:
-            level_index: Index into mesh_levels (use -1 for finest level)
+            level_index: Index into per-component mesh_levels (use -1 for finest level)
         
         Returns:
             New Case object at specified mesh level
         
         Raises:
             ValueError: If case doesn't use parametric geometry
-            IndexError: If level_index out of range
+            IndexError: If level_index out of range for any component
         
         Example:
             >>> case_coarse = CaseLoader.load_case('cases/single_square', mesh_level_index=0)
             >>> case_fine = case_coarse.reload_at_level(-1)  # Finest level
+        
+        Note:
+            The level_index applies to all parametric components.
+            All components should have mesh_levels defined with the same length.
         """
-        if self.config.mesh_levels is None:
+        # Check if any component uses parametric geometry
+        has_parametric = any(comp.mesh_levels is not None for comp in self.config.components)
+        if not has_parametric:
             raise ValueError(f"Case '{self.name}' does not use parametric geometry (no mesh_levels defined)")
         
         # Import here to avoid circular dependency

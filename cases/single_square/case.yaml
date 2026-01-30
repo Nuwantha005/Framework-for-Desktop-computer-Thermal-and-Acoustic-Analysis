@@ -1,13 +1,25 @@
 name: "Single Square"
-case_type: "hardcoded_panels_2d"
+case_type: "parametric_2d"
 description: "Unit square in uniform freestream - basic validation case"
 
 freestream:
   velocity: [1.0, 0.0, 0.0]
 
+mesh_levels:
+  - [2, 2]      # Level 0: 8 panels (coarse)
+  - [4, 4]      # Level 1: 16 panels
+  - [8, 8]      # Level 2: 32 panels
+  - [16, 16]    # Level 3: 64 panels
+  - [32, 32]    # Level 4: 128 panels (fine)
+
 components:
   - name: "square"
-    geometry_file: "shapes/square.json"
+    geometry:
+      type: "rectangle"
+      parameters:
+        width: 1.0
+        height: 1.0
+        center: [0.0, 0.0]
     transform:
       translation: [0.0, 0.0, 0.0]
       rotation_deg: 0.0

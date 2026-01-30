@@ -38,10 +38,25 @@ class TransformConfig(BaseModel):
         return v % 360.0
 
 
+class GeometryConfig(BaseModel):
+    """Parametric geometry configuration."""
+    type: str = Field(..., description="Geometry type (circle, rectangle, rounded_rectangle)")
+    parameters: dict = Field(default_factory=dict, description="Shape parameters (width, height, radius, etc.)")
+    
+    @field_validator('type')
+    @classmethod
+    def validate_type(cls, v):
+        """Check type is non-empty string."""
+        if not v or not v.strip():
+            raise ValueError("Geometry type cannot be empty")
+        return v.strip()
+
+
 class ComponentConfig(BaseModel):
     """Configuration for a single component."""
     name: str = Field(..., description="Unique component identifier")
-    geometry_file: str = Field(..., description="Path to geometry file (JSON/XY)")
+    geometry_file: Optional[str] = Field(None, description="Path to geometry file (JSON/XY) - for legacy cases")
+    geometry: Optional[GeometryConfig] = Field(None, description="Parametric geometry definition")
     transform: TransformConfig = Field(
         default_factory=TransformConfig,
         description="Placement transform"
@@ -58,6 +73,13 @@ class ComponentConfig(BaseModel):
         if not v or not v.strip():
             raise ValueError("Component name cannot be empty")
         return v.strip()
+    
+    def model_post_init(self, __context):
+        """Validate that exactly one of geometry_file or geometry is set."""
+        if self.geometry_file is None and self.geometry is None:
+            raise ValueError(f"Component '{self.name}': must specify either 'geometry_file' or 'geometry'")
+        if self.geometry_file is not None and self.geometry is not None:
+            raise ValueError(f"Component '{self.name}': cannot specify both 'geometry_file' and 'geometry'")
 
 
 class SolverConfig(BaseModel):
@@ -186,6 +208,7 @@ class SimulationConfig(BaseModel):
     case_type: Literal[
         "hardcoded_panels_2d",
         "primitive_2d",
+        "parametric_2d",
         "gmsh_2d",
         "gmsh_3d",
         "step_import"
@@ -195,6 +218,11 @@ class SimulationConfig(BaseModel):
     freestream: dict = Field(
         default={"velocity": [1.0, 0.0, 0.0]},
         description="Freestream conditions"
+    )
+    
+    mesh_levels: Optional[List[List[int]]] = Field(
+        default=None,
+        description="Resolution levels for parametric geometry (each list unpacks to generator params)"
     )
     
     components: List[ComponentConfig] = Field(

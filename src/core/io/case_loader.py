@@ -10,6 +10,7 @@ import numpy as np
 from ..config.schemas import SimulationConfig
 from ..geometry.component import Component, Transform
 from ..geometry.scene import Scene
+from ..geometry.factory import GeometryFactory
 from .geometry_io import GeometryReader
 from .case import Case
 
@@ -18,12 +19,13 @@ class CaseLoader:
     """Load and validate simulation cases from YAML files."""
     
     @staticmethod
-    def load(filepath: str | Path) -> tuple[Scene, SimulationConfig]:
+    def load(filepath: str | Path, mesh_level_index: int = 0) -> tuple[Scene, SimulationConfig]:
         """
         Load case file and create Scene.
         
         Args:
             filepath: Path to YAML case file
+            mesh_level_index: Index into mesh_levels for parametric geometry (default=0)
         
         Returns:
             Tuple of (Scene object, validated config)
@@ -44,28 +46,55 @@ class CaseLoader:
         config = SimulationConfig(**raw_config)
         
         # Build Scene from config
-        scene = CaseLoader._build_scene(config, base_path=filepath.parent)
+        scene = CaseLoader._build_scene(config, base_path=filepath.parent, mesh_level_index=mesh_level_index)
         
         return scene, config
     
     @staticmethod
-    def _build_scene(config: SimulationConfig, base_path: Path) -> Scene:
+    def _build_scene(config: SimulationConfig, base_path: Path, mesh_level_index: int = 0) -> Scene:
         """
         Build Scene from validated config.
         
         Args:
             config: Validated simulation config
             base_path: Base directory for resolving relative paths
+            mesh_level_index: Index into mesh_levels for parametric geometry (default=0)
         
         Returns:
             Scene object
         """
         components = []
         
+        # Get resolution tuple for parametric geometry
+        resolution = None
+        if config.mesh_levels is not None and len(config.mesh_levels) > 0:
+            if mesh_level_index < 0 or mesh_level_index >= len(config.mesh_levels):
+                raise IndexError(
+                    f"mesh_level_index {mesh_level_index} out of range. "
+                    f"Available levels: 0 to {len(config.mesh_levels) - 1}"
+                )
+            resolution = config.mesh_levels[mesh_level_index]
+        
         for comp_config in config.components:
-            # Load geometry
-            geom_path = base_path / comp_config.geometry_file
-            local_mesh = GeometryReader.read(geom_path)
+            # Load geometry: parametric or file-based
+            if comp_config.geometry is not None:
+                # Parametric geometry
+                if resolution is None:
+                    raise ValueError(
+                        f"Component '{comp_config.name}' uses parametric geometry but "
+                        f"no mesh_levels defined in case config"
+                    )
+                geom_def = {
+                    "type": comp_config.geometry.type,
+                    "parameters": comp_config.geometry.parameters
+                }
+                local_mesh = GeometryFactory.create(geom_def, resolution)
+            else:
+                # Legacy file-based geometry
+                if comp_config.geometry_file is None:
+                    raise ValueError(f"Component '{comp_config.name}': must specify geometry or geometry_file")
+                geom_path = base_path / comp_config.geometry_file
+                local_mesh = GeometryReader.read(geom_path)
             
             # Build transform
             trans_config = comp_config.transform
@@ -142,7 +171,7 @@ class CaseLoader:
         return True
 
     @staticmethod
-    def load_case(case_dir: str | Path) -> Case:
+    def load_case(case_dir: str | Path, mesh_level_index: int = 0) -> Case:
         """
         Load a case directory and return a Case object.
         
@@ -152,8 +181,14 @@ class CaseLoader:
             print(case.x_range, case.y_range)
             mesh = case.mesh
         
+        For parametric cases, specify mesh level:
+            case = CaseLoader.load_case('cases/single_square', mesh_level_index=2)
+            # or use finest level:
+            case = CaseLoader.load_case('cases/single_square', mesh_level_index=-1)
+        
         Args:
             case_dir: Path to case directory (containing case.yaml)
+            mesh_level_index: Index into mesh_levels for parametric geometry (default=0, use -1 for finest)
         
         Returns:
             Case object with scene, config, and helper properties
@@ -164,10 +199,22 @@ class CaseLoader:
         if not case_file.exists():
             raise FileNotFoundError(f"No case.yaml found in {case_dir}")
         
-        scene, config = CaseLoader.load(case_file)
+        # Handle negative indexing for mesh levels (e.g., -1 for finest)
+        if mesh_level_index < 0:
+            # Load config to get number of levels
+            with open(case_file, 'r') as f:
+                raw_config = yaml.safe_load(f)
+            config = SimulationConfig(**raw_config)
+            if config.mesh_levels is not None:
+                mesh_level_index = len(config.mesh_levels) + mesh_level_index
+            else:
+                mesh_level_index = 0
+        
+        scene, config = CaseLoader.load(case_file, mesh_level_index=mesh_level_index)
         
         return Case(
             scene=scene,
             config=config,
-            case_dir=case_dir
+            case_dir=case_dir,
+            mesh_level_index=mesh_level_index
         )

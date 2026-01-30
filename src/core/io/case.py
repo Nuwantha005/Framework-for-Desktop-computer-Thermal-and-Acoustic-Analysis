@@ -34,6 +34,12 @@ class Case:
         case.y_range
         case.resolution
     
+    For parametric cases, provides mesh level control:
+        case.mesh_level_index  (current level)
+        case.mesh_level  (resolution tuple, e.g., [8, 8])
+        case.num_mesh_levels  (total levels available)
+        case.reload_at_level(index)  (load different resolution)
+    
     Usage:
         from core.io import CaseLoader
         
@@ -41,11 +47,15 @@ class Case:
         print(case.name)
         print(case.x_range, case.y_range)
         solver = Solver(case.mesh, case.v_inf, case.aoa)
+        
+        # For parametric cases:
+        case_fine = case.reload_at_level(-1)  # Load finest level
     """
     
     scene: Scene
     config: SimulationConfig
     case_dir: Path
+    mesh_level_index: int = 0
     
     # Cached mesh
     _mesh: Optional[Mesh] = None
@@ -76,6 +86,49 @@ class Case:
     def num_components(self) -> int:
         """Number of components."""
         return self.scene.num_components
+    
+    # -------------------------------------------------------------------------
+    # Mesh Level Management (for parametric cases)
+    # -------------------------------------------------------------------------
+    
+    @property
+    def num_mesh_levels(self) -> int:
+        """Number of mesh levels available (0 for non-parametric cases)."""
+        if self.config.mesh_levels is None:
+            return 0
+        return len(self.config.mesh_levels)
+    
+    @property
+    def mesh_level(self) -> Optional[list[int]]:
+        """Current mesh resolution tuple (e.g., [8, 8] or [32])."""
+        if self.config.mesh_levels is None or len(self.config.mesh_levels) == 0:
+            return None
+        return self.config.mesh_levels[self.mesh_level_index]
+    
+    def reload_at_level(self, level_index: int) -> Case:
+        """
+        Reload case at different mesh level.
+        
+        Args:
+            level_index: Index into mesh_levels (use -1 for finest level)
+        
+        Returns:
+            New Case object at specified mesh level
+        
+        Raises:
+            ValueError: If case doesn't use parametric geometry
+            IndexError: If level_index out of range
+        
+        Example:
+            >>> case_coarse = CaseLoader.load_case('cases/single_square', mesh_level_index=0)
+            >>> case_fine = case_coarse.reload_at_level(-1)  # Finest level
+        """
+        if self.config.mesh_levels is None:
+            raise ValueError(f"Case '{self.name}' does not use parametric geometry (no mesh_levels defined)")
+        
+        # Import here to avoid circular dependency
+        from .case_loader import CaseLoader
+        return CaseLoader.load_case(self.case_dir, mesh_level_index=level_index)
     
     # -------------------------------------------------------------------------
     # Flow Conditions

@@ -35,7 +35,7 @@ from validation.scripts.utils import (
     save_monitoring_point_data,
     save_convergence_metrics,
     save_field_data,
-    plot_field_with_points,
+    plot_field_overview_with_components,
     plot_convergence_curves,
     plot_value_vs_level,
     plot_change_between_levels,
@@ -217,14 +217,28 @@ def main():
         if i == len(refinement_levels) - 1:
             print(f"Extracting field data for visualization...")
             try:
-                viz_domain = panel_case.config.visualization
+                viz_config = panel_case.config.visualization
+                
+                # Get domain - use from config or create default based on case
+                if viz_config.domain:
+                    domain = viz_config.domain
+                else:
+                    # Create default domain based on case bounding box
+                    scene = panel_case.scene
+                    bounds = scene.get_bounds()
+                    margin = 0.5
+                    domain = {
+                        'x_range': [bounds[0] - margin, bounds[1] + margin],
+                        'y_range': [bounds[2] - margin, bounds[3] + margin]
+                    }
+                
+                # Use first element of resolution tuple as grid resolution
+                resolution = viz_config.get_resolution()[0]  # Use nx for square grid
+                
                 field_data = extract_field_data_from_openfoam(
                     level_dir,
-                    domain={
-                        'x_range': viz_domain.get_x_range(),
-                        'y_range': viz_domain.get_y_range(),
-                    },
-                    resolution=viz_domain.resolution
+                    domain=domain,
+                    resolution=resolution
                 )
                 save_field_data(output_dir, field_data, level_name, study_name="of_convergence")
                 print(f"  Field data saved.")
@@ -273,37 +287,53 @@ def main():
     plots_dir = output_dir / "of_convergence" / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
     
-    # 1. Field overview with monitoring points (finest level)
-    field_config = viz_config.get('of_convergence', {}).get('field_overview', {})
+    # Load default viz config and get dict representation for utility functions
+    from validation.scripts.utils import load_viz_config as load_viz_config_util
+    if (output_dir / "viz_config.yaml").exists():
+        viz_config_dict = load_viz_config_util(output_dir / "viz_config.yaml")
+    else:
+        # Use default viz config
+        default_config_path = Path(__file__).parent.parent / "config" / "default_viz_config.yaml"
+        viz_config_dict = load_viz_config_util(default_config_path)
+    
+    # 1. Field overview with monitoring points using proper visualization utilities
+    field_config = viz_config_dict.get('of_convergence', {}).get('field_overview', {})
     if field_config.get('enabled', True):
         try:
             finest_level = level_names[-1]
             field_data = load_field_data(output_dir, finest_level, study_name="of_convergence")
             
-            # Add label
-            field_data['label'] = 'Velocity Magnitude'
-            field_data['field'] = field_data['velocity_magnitude']
+            print(f"  Generating field overview with components and monitoring points...")
             
-            plot_field_with_points(
+            # Get assembled mesh for proper component rendering
+            mesh = panel_case.scene.assemble()
+            
+            fig = plot_field_overview_with_components(
                 field_data,
+                mesh,
                 monitoring_points,
-                viz_config,
+                viz_config_dict,
                 plots_dir / "field_overview",
-                title=f"Flow Field - {finest_level}"
+                title=f"Flow Field Overview - {finest_level}"
             )
+            
+            import matplotlib.pyplot as plt
+            plt.close(fig)
             print(f"  ✓ Field overview plot saved")
         except Exception as e:
             print(f"  Warning: Could not generate field overview: {e}")
+            import traceback
+            traceback.print_exc()
     
     # 2. Convergence curves
-    conv_config = viz_config.get('of_convergence', {}).get('convergence_curves', {})
+    conv_config = viz_config_dict.get('of_convergence', {}).get('convergence_curves', {})
     if conv_config.get('enabled', True):
         try:
             figs = plot_convergence_curves(
                 point_data,
                 level_names,
                 quantities=['velocity', 'pressure'],
-                config=viz_config,
+                config=viz_config_dict,
                 output_dir=plots_dir,
                 plot_type='of_convergence'
             )
@@ -312,7 +342,7 @@ def main():
             print(f"  Warning: Could not generate convergence curves: {e}")
     
     # 3. Per-point plots
-    per_point_config = viz_config.get('of_convergence', {}).get('per_point_plots', {})
+    per_point_config = viz_config_dict.get('of_convergence', {}).get('per_point_plots', {})
     if per_point_config.get('enabled', True):
         for point in monitoring_points:
             pname = point['name']
@@ -324,7 +354,7 @@ def main():
                         level_names[:len(values)],
                         f"{pname} - {quantity}",
                         plots_dir / f"{pname}_{quantity}",
-                        config=viz_config
+                        config=viz_config_dict
                     )
                 except Exception as e:
                     print(f"  Warning: Could not plot {pname}/{quantity}: {e}")

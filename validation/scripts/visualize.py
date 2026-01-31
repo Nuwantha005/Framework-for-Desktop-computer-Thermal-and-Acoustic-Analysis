@@ -21,13 +21,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from validation.scripts.utils import (
     load_viz_config,
+    load_of_config,
     load_monitoring_point_data,
     load_metadata,
     load_field_data,
     load_convergence_metrics,
     load_surface_data,
     load_error_metrics,
-    plot_field_with_points,
+    plot_field_overview_with_components,
     plot_convergence_curves,
     plot_value_vs_level,
     plot_change_between_levels,
@@ -71,9 +72,19 @@ def visualize_of_convergence(case_dir: Path, output_dir: Path, viz_config: Dict)
                     if pname in level_row.columns:
                         point_data[level][pname][quantity] = float(level_row[pname].values[0])
     
-    # Create monitoring points list for field plot
-    monitoring_points = [{'name': name, 'coordinates': [0, 0]} for name in point_names]
-    # TODO: Load actual coordinates from metadata if saved
+    # Create monitoring points list - load actual coordinates from of_config
+    case_dir = output_dir.parent
+    of_config_path = case_dir / "of_case" / "config.yaml"
+    
+    monitoring_points = []
+    if of_config_path.exists():
+        # Load actual monitoring points from OF config
+        of_config = load_of_config(of_config_path)
+        monitoring_points = of_config.get('monitoring_points', [])
+    
+    if not monitoring_points:
+        # Fallback to dummy points at origin
+        monitoring_points = [{'name': name, 'coordinates': [0, 0]} for name in point_names]
     
     plots_dir = output_dir / "of_convergence" / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -85,16 +96,21 @@ def visualize_of_convergence(case_dir: Path, output_dir: Path, viz_config: Dict)
             finest_level = level_names[-1]
             field_data = load_field_data(output_dir, finest_level, "of_convergence")
             
-            field_data['label'] = 'Velocity Magnitude'
-            field_data['field'] = field_data['velocity_magnitude']
+            # Load panel case to get mesh for proper component rendering
+            from core.io import CaseLoader
+            panel_case = CaseLoader.load_case(case_dir)
+            mesh = panel_case.scene.assemble()
             
-            plot_field_with_points(
+            fig = plot_field_overview_with_components(
                 field_data,
+                mesh,
                 monitoring_points,
                 viz_config,
                 plots_dir / "field_overview",
                 title=f"Flow Field - {finest_level}"
             )
+            import matplotlib.pyplot as plt
+            plt.close(fig)
             print(f"  ✓ Field overview")
         except Exception as e:
             print(f"  Warning: Could not generate field overview: {e}")
@@ -393,11 +409,34 @@ def _generate_surface_envelope_plots(
     
     The quantity values (Vt, Cp) are visualized as displacements along the surface
     normal, creating a visual "envelope" that wraps around the body.
+    
+    Reads settings from viz_config['surface_comparison']['envelope_plots'].
     """
     import matplotlib.pyplot as plt
     
+    # Get envelope configuration
     envelope_config = viz_config.get('surface_comparison', {}).get('envelope_plots', {})
-    scale = envelope_config.get('scale', 0.3)
+    fig_config = viz_config.get('figure', {})
+    
+    # Base settings
+    base_scale = envelope_config.get('scale', 0.3)
+    show_whiskers = envelope_config.get('show_whiskers', True)
+    whisker_density_setting = envelope_config.get('whisker_density', 1)
+    envelope_alpha = envelope_config.get('envelope_alpha', 0.3)
+    
+    # Quantity-specific colormaps
+    colormaps = {
+        'Vt': envelope_config.get('colormap_Vt', 'viridis'),
+        'Cp': envelope_config.get('colormap_Cp', 'RdBu_r'),
+    }
+    
+    # Inversion settings (for Cp, negative = suction = peaks outward)
+    invert_Cp = envelope_config.get('invert_Cp', True)
+    
+    # Comparison plot colors
+    comparison_colors = envelope_config.get('comparison_colors', {})
+    panel_color = comparison_colors.get('panel', 'blue')
+    of_color = comparison_colors.get('openfoam', 'red')
     
     for comp_name in panel_data.keys():
         if comp_name not in of_data:
@@ -414,9 +453,6 @@ def _generate_surface_envelope_plots(
         x = panel_df['x'].values
         y = panel_df['y'].values
         
-        # Ensure the surface is closed (duplicate first point if needed)
-        # and properly ordered for normal computation
-        
         for quantity in quantities:
             if quantity not in panel_df.columns or quantity not in of_df.columns:
                 continue
@@ -426,11 +462,23 @@ def _generate_surface_envelope_plots(
             of_x = of_df['x'].values
             of_y = of_df['y'].values
             
-            # Determine if we should invert values (for Cp, negative = suction = peaks outward)
-            invert = (quantity == 'Cp')
+            # Determine if we should invert values
+            invert = invert_Cp if quantity == 'Cp' else False
             
-            # Scale factor (can be quantity-specific)
-            q_scale = envelope_config.get(f'scale_{quantity}', scale)
+            # Get quantity-specific scale (fall back to base scale)
+            q_scale = envelope_config.get(f'scale_{quantity}', base_scale)
+            
+            # Get colormap for this quantity (fall back to viridis)
+            colormap = colormaps.get(quantity, 'viridis')
+            
+            # Calculate whisker density based on point count and setting
+            if whisker_density_setting == 1:
+                # Auto: show ~40 whiskers
+                panel_whisker_density = max(1, len(x) // 40)
+                of_whisker_density = max(1, len(of_x) // 40)
+            else:
+                panel_whisker_density = whisker_density_setting
+                of_whisker_density = whisker_density_setting
             
             try:
                 # 1. Single envelope plot for panel method (with colormap)
@@ -438,14 +486,14 @@ def _generate_surface_envelope_plots(
                     x, y, panel_values,
                     scale=q_scale,
                     quantity_name=quantity,
-                    colormap='viridis' if quantity == 'Vt' else 'RdBu_r',
+                    colormap=colormap,
                     invert_values=invert,
                     title=f'Panel Method - {quantity} Surface Distribution',
-                    show_whiskers=True,
-                    whisker_density=max(1, len(x) // 40),
+                    show_whiskers=show_whiskers,
+                    whisker_density=panel_whisker_density,
+                    envelope_alpha=envelope_alpha,
                 )
                 
-                fig_config = viz_config.get('figure', {})
                 for fmt in fig_config.get('format', ['png']):
                     save_path = plots_dir / f"{comp_name}_{quantity}_envelope_panel.{fmt}"
                     fig.savefig(save_path, dpi=fig_config.get('dpi', 300), bbox_inches='tight')
@@ -456,11 +504,12 @@ def _generate_surface_envelope_plots(
                     of_x, of_y, of_values,
                     scale=q_scale,
                     quantity_name=quantity,
-                    colormap='viridis' if quantity == 'Vt' else 'RdBu_r',
+                    colormap=colormap,
                     invert_values=invert,
                     title=f'OpenFOAM - {quantity} Surface Distribution',
-                    show_whiskers=True,
-                    whisker_density=max(1, len(of_x) // 40),
+                    show_whiskers=show_whiskers,
+                    whisker_density=of_whisker_density,
+                    envelope_alpha=envelope_alpha,
                 )
                 
                 for fmt in fig_config.get('format', ['png']):
@@ -488,8 +537,8 @@ def _generate_surface_envelope_plots(
                     label2='OpenFOAM',
                     scale=q_scale,
                     quantity_name=quantity,
-                    color1='blue',
-                    color2='red',
+                    color1=panel_color,
+                    color2=of_color,
                     invert_values=invert,
                     title=f'{quantity} Distribution Comparison (Envelope)',
                     show_difference=True,

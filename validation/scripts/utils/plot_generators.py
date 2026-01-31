@@ -12,6 +12,86 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 
+def plot_field_overview_with_components(
+    field_data: Dict[str, np.ndarray],
+    mesh,  # Assembled mesh from scene
+    monitoring_points: List[Dict[str, Any]],
+    config: Dict[str, Any],
+    output_path: Path,
+    title: str = "Flow Field Overview"
+) -> Figure:
+    """
+    Plot velocity/pressure field with proper component boundaries and monitoring points.
+    
+    Uses the Visualizer class for proper component rendering.
+    
+    Args:
+        field_data: Dict with 'XX', 'YY', 'velocity_magnitude', 'Vx', 'Vy', etc.
+        mesh: Assembled mesh from scene (with component information)
+        monitoring_points: List of points with 'name' and 'coordinates' 
+        config: Visualization config dict
+        output_path: Path to save figure
+        title: Plot title
+    
+    Returns:
+        Figure object
+    """
+    from visualization import Visualizer
+    
+    fig_config = config.get('figure', {})
+    
+    # Create field overview using Visualizer
+    viz = Visualizer(figsize=(12, 8))
+    fig, ax = viz.create_figure()
+    
+    # Plot velocity magnitude contours
+    XX, YY = field_data['XX'], field_data['YY']
+    velocity_magnitude = field_data['velocity_magnitude']
+    
+    # Manual contour plot with colorbar
+    levels = 20
+    cf = ax.contourf(XX, YY, velocity_magnitude, levels=levels, cmap='viridis')
+    plt.colorbar(cf, ax=ax, label='Velocity Magnitude [m/s]')
+    
+    # Draw body outline using proper component handling
+    viz._draw_body_outline(ax, mesh, fill=True)
+    
+    # Add monitoring points with proper coordinates and labels
+    for point in monitoring_points:
+        coords = point['coordinates']
+        x_coord, y_coord = coords[0], coords[1]
+        
+        # Plot point
+        ax.scatter(x_coord, y_coord, s=100, c='red', 
+                  marker='o', edgecolors='white', linewidths=2, zorder=10)
+        
+        # Add label
+        ax.annotate(point['name'], xy=(x_coord, y_coord), xytext=(5, 5),
+                   textcoords='offset points', fontsize=10, fontweight='bold',
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8),
+                   zorder=11)
+    
+    # Format plot
+    ax.set_aspect('equal')
+    ax.set_xlabel('x [m]')
+    ax.set_ylabel('y [m]')
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    
+    # Set reasonable limits
+    ax.set_xlim(XX.min(), XX.max())
+    ax.set_ylim(YY.min(), YY.max())
+    
+    plt.tight_layout()
+    
+    # Save in multiple formats
+    for fmt in fig_config.get('format', ['png']):
+        save_path = output_path.with_suffix(f'.{fmt}')
+        fig.savefig(save_path, dpi=fig_config.get('dpi', 300), bbox_inches='tight')
+    
+    return fig
+
+
 def plot_field_with_points(
     field_data: Dict[str, np.ndarray],
     monitoring_points: List[Dict[str, Any]],
@@ -21,6 +101,8 @@ def plot_field_with_points(
 ) -> Figure:
     """
     Plot velocity/pressure field with monitoring point locations.
+    
+    DEPRECATED: Use plot_field_overview_with_components for proper component rendering.
     
     Uses existing VelocityField2D visualization with overlaid points.
     

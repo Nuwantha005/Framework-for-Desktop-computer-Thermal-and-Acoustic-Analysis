@@ -125,11 +125,15 @@ surface_comparison:
     scale_Vt: 0.3 # Override scale for tangential velocity
     scale_Cp: 0.3 # Override scale for pressure coefficient
     show_whiskers: true # Draw lines from surface to envelope
-    whisker_density: 1 # Plot every Nth whisker (1=all, 2=every other)
+    whisker_density: 1 # Plot every Nth whisker (1=auto ~40 whiskers, 2=every other, etc.)
     envelope_alpha: 0.3 # Fill transparency
     colormap_Vt: "viridis" # Colormap for Vt plots
     colormap_Cp: "RdBu_r" # Colormap for Cp plots (diverging)
     invert_Cp: true # Invert Cp so suction peaks outward
+    # Colors for comparison plots
+    comparison_colors:
+      panel: "blue"
+      openfoam: "red"
 
 # Export options for external tools
 export:

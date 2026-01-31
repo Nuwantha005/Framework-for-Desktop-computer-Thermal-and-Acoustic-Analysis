@@ -11,6 +11,7 @@ from .config_loader import (
 from .convergence_metrics import compute_convergence_metrics, extract_monitoring_point_data
 from .plot_generators import (
     plot_field_with_points,
+    plot_field_overview_with_components,
     plot_convergence_curves,
     plot_value_vs_level,
     plot_change_between_levels,
@@ -48,6 +49,7 @@ __all__ = [
     'compute_convergence_metrics',
     'extract_monitoring_point_data',
     'plot_field_with_points',
+    'plot_field_overview_with_components',
     'plot_convergence_curves',
     'plot_value_vs_level',
     'plot_change_between_levels',

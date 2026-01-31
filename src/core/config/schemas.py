@@ -94,10 +94,26 @@ class ComponentConfig(BaseModel):
 
 class SolverConfig(BaseModel):
     """Panel solver configuration."""
-    type: Literal["constant_source", "constant_doublet", "linear_source"] = Field(
-        default="constant_source",
-        description="Singularity type"
+    
+    # Panel method dimensions (new format)
+    singularity_type: Literal[
+        "source", "doublet", "vortex",
+        "source_doublet", "source_vortex",
+        "doublet_vortex", "source_doublet_vortex"
+    ] = Field(
+        default="source",
+        description="Singularity element type(s)"
     )
+    panel_order: Literal["constant", "linear", "quadratic"] = Field(
+        default="constant",
+        description="Panel order (constant=0th, linear=1st, quadratic=2nd)"
+    )
+    panel_geometry: Literal["flat", "curved"] = Field(
+        default="flat",
+        description="Panel geometry type"
+    )
+    
+    # Solver parameters
     tolerance: float = Field(
         default=1e-10,
         gt=0,
@@ -108,6 +124,27 @@ class SolverConfig(BaseModel):
         gt=0,
         description="Max iterations for iterative solvers (None = direct solver)"
     )
+    
+    # Legacy field for backward compatibility
+    type: Optional[Literal["constant_source", "constant_doublet", "linear_source"]] = Field(
+        default=None,
+        description="[Deprecated] Use singularity_type, panel_order, panel_geometry instead"
+    )
+    
+    def model_post_init(self, __context):
+        """Handle legacy 'type' field by mapping to new fields."""
+        if self.type is not None:
+            # Map old format to new three-dimensional format
+            type_mapping = {
+                "constant_source": ("source", "constant", "flat"),
+                "constant_doublet": ("doublet", "constant", "flat"),
+                "linear_source": ("source", "linear", "flat"),
+            }
+            if self.type in type_mapping:
+                s, o, g = type_mapping[self.type]
+                object.__setattr__(self, 'singularity_type', s)
+                object.__setattr__(self, 'panel_order', o)
+                object.__setattr__(self, 'panel_geometry', g)
 
 
 class OutputConfig(BaseModel):

@@ -55,8 +55,8 @@ def demo_side_by_side(show: bool = True, save: bool = False):
         solver.solve()
         
         # Compute velocity field
-        field = VelocityField2D(mesh, v_inf, aoa, solver.sigma)
-        XX, YY, Vx, Vy = field.compute((-2, 3), (-2, 2), (100, 80), num_cores=4)
+        field = VelocityField2D(solver)
+        XX, YY, Vx, Vy = field.compute((-2, 3), (-2, 2), (100, 80))
         
         # Store results
         results.append({
@@ -124,8 +124,8 @@ def demo_difference_plot(show: bool = True, save: bool = False):
     solver_fine = SourcePanelSolver(mesh_fine, v_inf=v_inf, aoa=aoa)
     solver_fine.solve()
     
-    field_fine = VelocityField2D(mesh_fine, v_inf, aoa, solver_fine.sigma)
-    XX, YY, Vx_fine, Vy_fine = field_fine.compute((-2, 3), (-2, 2), (100, 80), num_cores=4)
+    field_fine = VelocityField2D(solver_fine)
+    XX, YY, Vx_fine, Vy_fine = field_fine.compute((-2, 3), (-2, 2), (100, 80))
     
     # Coarse mesh
     print("Solving coarse mesh...")
@@ -133,8 +133,8 @@ def demo_difference_plot(show: bool = True, save: bool = False):
     solver_coarse = SourcePanelSolver(mesh_coarse, v_inf=v_inf, aoa=aoa)
     solver_coarse.solve()
     
-    field_coarse = VelocityField2D(mesh_coarse, v_inf, aoa, solver_coarse.sigma)
-    _, _, Vx_coarse, Vy_coarse = field_coarse.compute((-2, 3), (-2, 2), (100, 80), num_cores=4)
+    field_coarse = VelocityField2D(solver_coarse)
+    _, _, Vx_coarse, Vy_coarse = field_coarse.compute((-2, 3), (-2, 2), (100, 80))
     
     # Create FieldSeries
     V_mag_fine = np.sqrt(Vx_fine**2 + Vy_fine**2)

@@ -4,11 +4,11 @@ Demo: Streamline Visualization
 
 Loads a case, solves it, and plots streamlines.
 Usage:
-    python demo_streamlines.py <case_dir> [--show] [--save] [--cores N]
+    python demo_streamlines.py <case_dir> [--show] [--save]
     
 Example:
     python demo_streamlines.py ../cases/cylinder_flow --show
-    python demo_streamlines.py ../cases/single_square --save --cores 6
+    python demo_streamlines.py ../cases/single_square --save
 """
 
 import sys
@@ -19,7 +19,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.io import CaseLoader
-from solvers.panel2d.spm import SourcePanelSolver
 from visualization import Visualizer
 from visualization.field2d import VelocityField2D
 
@@ -29,7 +28,6 @@ def main():
     parser.add_argument("case_dir", type=str, help="Path to case directory")
     parser.add_argument("--show", action="store_true", help="Display plot interactively")
     parser.add_argument("--save", action="store_true", help="Save plot to case_dir/out/")
-    parser.add_argument("--cores", type=int, default=6, help="Number of CPU cores (default: 6)")
     parser.add_argument("--protect", action="store_true", help="Save to timestamped subfolder")
     args = parser.parse_args()
     
@@ -46,14 +44,14 @@ def main():
     
     # Solve
     print("Solving...")
-    solver = SourcePanelSolver(case.mesh, v_inf=case.v_inf, aoa=case.aoa)
+    solver = case.create_solver()
     solver.solve()
     
-    if solver.Cp is None:
+    if not solver.is_solved:
         print("Error: Solver failed")
         sys.exit(1)
     
-    print(f"  Cp range: [{min(solver.Cp):.4f}, {max(solver.Cp):.4f}]")
+    print(f"  Surface velocity range: [{solver.surface_velocity[:, 0].min():.4f}, {solver.surface_velocity[:, 0].max():.4f}]")
     
     # Get visualization settings directly from case
     x_range = case.x_range
@@ -63,9 +61,9 @@ def main():
     print(f"Domain: x={x_range}, y={y_range}")
     
     # Compute velocity field
-    print(f"Computing velocity field ({resolution[0]}x{resolution[1]}, {args.cores} cores)...")
-    field = VelocityField2D(case.mesh, case.v_inf, case.aoa, solver.sigma)
-    XX, YY, Vx, Vy = field.compute(x_range, y_range, resolution, num_cores=args.cores)
+    print(f"Computing velocity field ({resolution[0]}x{resolution[1]})...")
+    field = VelocityField2D(solver)
+    XX, YY, Vx, Vy = field.compute(x_range, y_range, resolution)
     
     # Plot
     output_dir = case.output_dir if args.save else None

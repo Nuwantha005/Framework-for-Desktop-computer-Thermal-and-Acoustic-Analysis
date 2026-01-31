@@ -1,14 +1,19 @@
 """
 Main visualization facade for 2D panel method results.
 Coordinates field computation and plotting with caching.
+
+Updated to use solver interface instead of direct source strengths.
 """
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, TYPE_CHECKING
 from numpy.typing import NDArray
 
 from core.geometry.mesh import Mesh
 from .field2d import VelocityField2D
 from .plotters import StreamlinePlotter, ContourPlotter
+
+if TYPE_CHECKING:
+    from solvers.base import Solver
 
 
 class PanelVisualizer2D:
@@ -21,10 +26,12 @@ class PanelVisualizer2D:
     - Easy extension for new visualization types
     
     Usage:
-        viz = PanelVisualizer2D(mesh, v_inf, aoa, sigma)
+        solver = case.create_solver()
+        solver.solve()
+        viz = PanelVisualizer2D(solver)
         
         # Option A: Compute once, plot many
-        viz.compute_field((-2, 2), (-1.5, 1.5), (200, 150), num_cores=6)
+        viz.compute_field((-2, 2), (-1.5, 1.5), (200, 150))
         viz.plot_streamlines(save_path='streamlines.png')
         viz.plot_contours(save_path='contours.png')
         
@@ -33,36 +40,33 @@ class PanelVisualizer2D:
                             resolution=(200, 150), save_path='out.png')
     """
     
-    def __init__(self,
-                 mesh: Mesh,
-                 v_inf: float,
-                 aoa: float,
-                 source_strengths: NDArray):
+    def __init__(self, solver: "Solver"):
         """
         Initialize 2D panel visualizer.
         
         Args:
-            mesh: Solved 2D mesh
-            v_inf: Freestream velocity
-            aoa: Angle of attack (degrees)
-            source_strengths: Panel source strengths (sigma)
+            solver: Solved Solver instance
+            
+        Raises:
+            ValueError: If solver not solved yet
         """
-        self.mesh = mesh
-        self.v_inf = v_inf
-        self.aoa = aoa
+        if not solver.is_solved:
+            raise ValueError("Solver must be solved before creating PanelVisualizer2D")
+        
+        self.solver = solver
+        self.mesh = solver.mesh
         
         # Field computer with caching
-        self.field = VelocityField2D(mesh, v_inf, aoa, source_strengths)
+        self.field = VelocityField2D(solver)
         
         # Plotters
-        self.streamline_plotter = StreamlinePlotter(mesh)
-        self.contour_plotter = ContourPlotter(mesh)
+        self.streamline_plotter = StreamlinePlotter(self.mesh)
+        self.contour_plotter = ContourPlotter(self.mesh)
     
     def compute_field(self,
                      x_range: Tuple[float, float],
                      y_range: Tuple[float, float],
                      resolution: Tuple[int, int] = (100, 100),
-                     num_cores: int = 6,
                      force: bool = False):
         """
         Compute and cache velocity field.
@@ -71,16 +75,14 @@ class PanelVisualizer2D:
             x_range: (xmin, xmax) domain
             y_range: (ymin, ymax) domain
             resolution: (nx, ny) grid points
-            num_cores: Parallel worker count
             force: Recompute even if cached
         """
-        self.field.compute(x_range, y_range, resolution, num_cores, force)
+        self.field.compute(x_range, y_range, resolution, force)
     
     def plot_streamlines(self,
                         x_range: Optional[Tuple[float, float]] = None,
                         y_range: Optional[Tuple[float, float]] = None,
                         resolution: Optional[Tuple[int, int]] = None,
-                        num_cores: int = 6,
                         density: float = 1.0,
                         seed_style: str = 'left',
                         figsize: Tuple[float, float] = (12, 8),
@@ -92,7 +94,6 @@ class PanelVisualizer2D:
         
         Args:
             x_range, y_range, resolution: Field parameters (None = use cached)
-            num_cores: Parallel cores for computation
             density: Streamline density
             seed_style: 'left' | 'uniform' | 'auto'
             figsize: Figure size
@@ -102,9 +103,7 @@ class PanelVisualizer2D:
         """
         # Get or compute field
         if x_range is not None and y_range is not None and resolution is not None:
-            XX, YY, Vx, Vy = self.field.compute(
-                x_range, y_range, resolution, num_cores
-            )
+            XX, YY, Vx, Vy = self.field.compute(x_range, y_range, resolution)
         else:
             cached = self.field.get_cached()
             if cached is None:
@@ -129,7 +128,6 @@ class PanelVisualizer2D:
                      x_range: Optional[Tuple[float, float]] = None,
                      y_range: Optional[Tuple[float, float]] = None,
                      resolution: Optional[Tuple[int, int]] = None,
-                     num_cores: int = 6,
                      levels: int = 20,
                      figsize: Tuple[float, float] = (10, 8),
                      show_body: bool = True,
@@ -139,7 +137,6 @@ class PanelVisualizer2D:
         
         Args:
             x_range, y_range, resolution: Field parameters (None = use cached)
-            num_cores: Parallel cores for computation
             levels: Number of contour levels
             figsize: Figure size
             show_body: Draw body outline
@@ -147,9 +144,7 @@ class PanelVisualizer2D:
         """
         # Get or compute field
         if x_range is not None and y_range is not None and resolution is not None:
-            XX, YY, Vx, Vy = self.field.compute(
-                x_range, y_range, resolution, num_cores
-            )
+            XX, YY, Vx, Vy = self.field.compute(x_range, y_range, resolution)
         else:
             cached = self.field.get_cached()
             if cached is None:

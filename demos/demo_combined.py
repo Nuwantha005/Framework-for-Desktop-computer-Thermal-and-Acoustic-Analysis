@@ -25,7 +25,6 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.io import CaseLoader
-from solvers.panel2d.spm import SourcePanelSolver
 from visualization import Visualizer
 from visualization.field2d import VelocityField2D
 
@@ -52,7 +51,7 @@ def main():
     
     # Solve
     print("Solving...")
-    solver = SourcePanelSolver(case.mesh, v_inf=case.v_inf, aoa=case.aoa)
+    solver = case.create_solver()
     solver.solve()
     
     if solver.Cp is None:
@@ -69,9 +68,9 @@ def main():
     print(f"Domain: x={x_range}, y={y_range}, res={resolution}")
     
     # Compute velocity field ONCE
-    print(f"Computing velocity field ({resolution[0]}x{resolution[1]}, {args.cores} cores)...")
-    field = VelocityField2D(case.mesh, case.v_inf, case.aoa, solver.sigma)
-    XX, YY, Vx, Vy = field.compute(x_range, y_range, resolution, num_cores=args.cores)
+    print(f"Computing velocity field ({resolution[0]}x{resolution[1]})...")
+    field = VelocityField2D(solver)
+    XX, YY, Vx, Vy = field.compute(x_range, y_range, resolution)
     
     # Create combined figure
     output_dir = case.output_dir if args.save else None

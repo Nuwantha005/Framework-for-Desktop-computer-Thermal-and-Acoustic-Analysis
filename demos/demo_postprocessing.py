@@ -24,7 +24,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.io import CaseLoader
-from solvers.panel2d.spm import SourcePanelSolver
 from visualization import Visualizer
 from visualization.field2d import VelocityField2D
 from postprocessing import (
@@ -39,7 +38,6 @@ def main():
     parser.add_argument("case_dir", type=str, help="Path to case directory")
     parser.add_argument("--show", action="store_true", help="Display plots interactively")
     parser.add_argument("--save", action="store_true", help="Save plots to case_dir/out/")
-    parser.add_argument("--cores", type=int, default=6, help="Number of CPU cores")
     args = parser.parse_args()
     
     if not args.show and not args.save:
@@ -61,9 +59,9 @@ def main():
     # 2. Solve panel method
     # =========================================================================
     print("\nSolving...")
-    solver = SourcePanelSolver(case.mesh, v_inf=case.v_inf, aoa=case.aoa)
+    solver = case.create_solver()
     solver.solve()
-    print(f"  Cp range: [{min(solver.Cp):.4f}, {max(solver.Cp):.4f}]")
+    print(f"  Surface velocity range: [{solver.surface_velocity[:, 0].min():.4f}, {solver.surface_velocity[:, 0].max():.4f}]")
     
     # =========================================================================
     # 3. Compute velocity field
@@ -73,8 +71,8 @@ def main():
     resolution = case.resolution
     
     print(f"\nComputing velocity field ({resolution[0]}×{resolution[1]})...")
-    vfield = VelocityField2D(case.mesh, case.v_inf, case.aoa, solver.sigma)
-    XX, YY, Vx, Vy = vfield.compute(x_range, y_range, resolution, num_cores=args.cores)
+    vfield = VelocityField2D(solver)
+    XX, YY, Vx, Vy = vfield.compute(x_range, y_range, resolution)
     
     # =========================================================================
     # 4. Create FieldData container

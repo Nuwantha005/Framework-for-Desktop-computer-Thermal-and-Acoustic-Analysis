@@ -120,12 +120,11 @@ def run_single_panel_case(
     # Compute velocity field if requested
     if compute_field:
         print(f"  Computing velocity field...")
-        vfield = VelocityField2D(case.mesh, case.v_inf, case.aoa, solver.sigma)
+        vfield = VelocityField2D(solver)
         XX, YY, Vx, Vy = vfield.compute(
             case.x_range,
             case.y_range,
-            case.resolution,
-            num_cores=num_cores
+            case.resolution
         )
         
         metrics["field"] = {

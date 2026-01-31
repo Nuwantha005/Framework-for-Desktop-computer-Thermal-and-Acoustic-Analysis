@@ -1,72 +1,19 @@
 """
 Velocity field computation for 2D panel methods.
 Handles grid generation and caching to avoid redundant calculations.
+
+Refactored to use solver.velocity_at() interface.
 """
 
 import numpy as np
-from typing import Tuple, Optional
+from typing import Tuple, Optional, TYPE_CHECKING
 from numpy.typing import NDArray
-from multiprocessing import Pool
 from matplotlib import path
 
 from core.geometry.mesh import Mesh
 
-
-def _compute_point_velocity(args):
-    """
-    Worker function for parallel velocity computation at a single point.
-    Must be module-level for multiprocessing pickling.
-    
-    Args:
-        args: Tuple of (XP, YP, sigma, nodes_X, nodes_Y, phi, S, v_inf, aoa_rad)
-        
-    Returns:
-        (Vx, Vy): Velocity components at point P
-    """
-    XP, YP, sigma, nodes_X, nodes_Y, phi, S, v_inf, aoa_rad = args
-    
-    # Vectorized computation over all panels
-    dx = XP - nodes_X
-    dy = YP - nodes_Y
-    
-    cos_phi = np.cos(phi)
-    sin_phi = np.sin(phi)
-    
-    A = -dx * cos_phi - dy * sin_phi
-    B = np.maximum(dx**2 + dy**2, 1e-12)
-    
-    E_sq = np.maximum(B - A**2, 0)
-    E = np.sqrt(E_sq)
-    
-    # Influence coefficients (Katz & Plotkin formulation)
-    Cx = -cos_phi
-    Dx = dx
-    Cy = -sin_phi
-    Dy = dy
-    
-    log_term = np.log(np.maximum((S**2 + 2*A*S + B) / B, 1e-12))
-    
-    E_safe = np.where(E < 1e-12, 1.0, E)
-    atan_term = np.arctan2((S + A), E_safe) - np.arctan2(A, E_safe)
-    
-    term2_factor = 1.0 / E_safe
-    
-    Mx = 0.5 * Cx * log_term + ((Dx - A*Cx) * term2_factor) * atan_term
-    My = 0.5 * Cy * log_term + ((Dy - A*Cy) * term2_factor) * atan_term
-    
-    # Zero out singular points
-    mask = E < 1e-12
-    Mx[mask] = 0
-    My[mask] = 0
-    
-    # Sum panel contributions
-    u_induced = np.sum(sigma * Mx) / (2 * np.pi)
-    v_induced = np.sum(sigma * My) / (2 * np.pi)
-    
-    Vx = v_inf * np.cos(aoa_rad) + u_induced
-    Vy = v_inf * np.sin(aoa_rad) + v_induced
-    
-    return Vx, Vy
+if TYPE_CHECKING:
+    from solvers.base import Solver
 
 
 class VelocityField2D:
@@ -75,44 +22,34 @@ class VelocityField2D:
     
     This class separates expensive grid computation from visualization,
     allowing multiple plots to reuse the same computed field.
+    
+    Delegates velocity computation to solver.velocity_at() method.
     """
     
     def __init__(self, 
-                 mesh: Mesh,
-                 v_inf: float,
-                 aoa: float,
-                 source_strengths: NDArray):
+                 solver: "Solver",
+                 mesh: Optional[Mesh] = None):
         """
         Initialize velocity field calculator.
         
         Args:
-            mesh: 2D mesh geometry
-            v_inf: Freestream velocity magnitude
-            aoa: Angle of attack (degrees)
-            source_strengths: Panel source strengths (sigma)
+            solver: Solved Solver instance with velocity_at() method
+            mesh: Optional mesh override (uses solver's mesh if None)
+        
+        Raises:
+            ValueError: If solver not solved yet
         """
-        if mesh.dimension != 2:
+        if not solver.is_solved:
+            raise ValueError("Solver must be solved before creating VelocityField2D")
+        
+        self.solver = solver
+        self.mesh = mesh if mesh is not None else solver.mesh
+        
+        if self.mesh.dimension != 2:
             raise ValueError("VelocityField2D requires a 2D mesh")
-            
-        self.mesh = mesh
-        self.v_inf = v_inf
-        self.aoa_rad = np.radians(aoa)
-        self.sigma = source_strengths
-        
-        # Extract panel geometry for workers
-        panel_start_indices = mesh.panels[:, 0]
-        self.nodes_X = mesh.nodes[panel_start_indices, 0]
-        self.nodes_Y = mesh.nodes[panel_start_indices, 1]
-        self.S = mesh.areas
-        
-        # Panel angles
-        tx = mesh.tangents[:, 0]
-        ty = mesh.tangents[:, 1]
-        self.phi = np.arctan2(ty, tx)
-        self.phi = np.where(self.phi < 0, self.phi + 2*np.pi, self.phi)
         
         # Build boundary paths for each component separately
-        self.boundary_paths = self._build_component_paths(mesh)
+        self.boundary_paths = self._build_component_paths(self.mesh)
         
         # Cached field data
         self._XX: Optional[NDArray] = None
@@ -127,7 +64,6 @@ class VelocityField2D:
                 x_range: Tuple[float, float],
                 y_range: Tuple[float, float],
                 resolution: Tuple[int, int] = (100, 100),
-                num_cores: int = 6,
                 force: bool = False) -> Tuple[NDArray, NDArray, NDArray, NDArray]:
         """
         Compute velocity field on a grid (with caching).
@@ -136,7 +72,6 @@ class VelocityField2D:
             x_range: (xmin, xmax) domain extent
             y_range: (ymin, ymax) domain extent
             resolution: (nx, ny) grid points
-            num_cores: Parallel worker count
             force: If True, recompute even if cached
             
         Returns:
@@ -156,25 +91,15 @@ class VelocityField2D:
         y_grid = np.linspace(ymin, ymax, ny)
         XX, YY = np.meshgrid(x_grid, y_grid)
         
+        # Flatten grid to (N, 2) for solver
         points_flat = np.column_stack([XX.ravel(), YY.ravel()])
-        n_points = len(points_flat)
         
-        # Build task list for workers
-        tasks = [
-            (points_flat[i, 0], points_flat[i, 1],
-             self.sigma, self.nodes_X, self.nodes_Y,
-             self.phi, self.S, self.v_inf, self.aoa_rad)
-            for i in range(n_points)
-        ]
+        print(f"Computing velocity field: {nx}×{ny} grid via solver.velocity_at()...")
         
-        print(f"Computing velocity field: {nx}×{ny} grid, {num_cores} cores...")
-        
-        with Pool(processes=num_cores) as pool:
-            results = pool.map(_compute_point_velocity, tasks)
-        
-        results_arr = np.array(results)
-        Vx_flat = results_arr[:, 0]
-        Vy_flat = results_arr[:, 1]
+        # Use solver's velocity_at method (returns (N, 3) array)
+        velocities = self.solver.velocity_at(points_flat)
+        Vx_flat = velocities[:, 0]
+        Vy_flat = velocities[:, 1]
         
         # Mask interior points (check each component separately)
         is_inside = self._points_inside_any_body(points_flat)

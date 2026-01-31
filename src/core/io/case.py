@@ -236,6 +236,27 @@ class Case:
         """Solver tolerance."""
         return self.config.solver.tolerance
     
+    def create_solver(self) -> "Solver":
+        """
+        Create solver instance from case configuration.
+        
+        Returns:
+            Solver instance configured from case settings (mesh, v_inf, aoa)
+        
+        Example:
+            >>> case = CaseLoader.load_case('cases/cylinder_flow')
+            >>> solver = case.create_solver()
+            >>> solver.solve()
+            >>> velocities = solver.velocity_at(points)
+        """
+        from solvers.factory import SolverFactory
+        return SolverFactory.create(
+            config=self.config.solver,
+            mesh=self.mesh,
+            v_inf=self.v_inf,
+            aoa=self.aoa
+        )
+    
     # -------------------------------------------------------------------------
     # Fluid Properties
     # -------------------------------------------------------------------------

@@ -21,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.io import CaseLoader
-from solvers.panel2d.spm import SourcePanelSolver
 from postprocessing.surface import SurfaceDataExtractor
 from visualization.comparison import ComparisonVisualizer
 from validation.adapters.openfoam import OpenFOAMSurfaceExtractor, OpenFOAMRunner
@@ -44,7 +43,7 @@ def extract_panel_surface(case, openfoam_case_dir: Path) -> 'SurfaceData':
     
     # Run solver
     print(f"  Mesh: {case.num_panels} panels, {case.num_components} components")
-    solver = SourcePanelSolver(case.mesh, v_inf=case.v_inf, aoa=case.aoa)
+    solver = case.create_solver()
     solver.solve()
     
     print(f"  Cp range: [{solver.Cp.min():.4f}, {solver.Cp.max():.4f}]")

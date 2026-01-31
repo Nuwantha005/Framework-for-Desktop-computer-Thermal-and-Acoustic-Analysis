@@ -56,8 +56,8 @@ def one_rect():
     print(f"Cp range: [{min(solver.Cp):.4f}, {max(solver.Cp):.4f}]")
     
     # Post-processing visualization
-    field = VelocityField2D(mesh, v_inf, aoa, solver.sigma)
-    XX, YY, Vx, Vy = field.compute((-2, 4), (-2, 2), (150, 100), num_cores=6)
+    field = VelocityField2D(solver)
+    XX, YY, Vx, Vy = field.compute((-2, 4), (-2, 2), (150, 100))
     
     viz2 = Visualizer()
     viz2.create_figure(subplots=(1, 2), figsize=(14, 6))
@@ -127,8 +127,8 @@ def two_rects_scene():
     print("\n--- Standalone Post-Processing ---")
     
     # Compute velocity field
-    field = VelocityField2D(mesh, v_inf, aoa, solver.sigma)
-    XX, YY, Vx, Vy = field.compute((-6, 4), (-3, 3), (200, 120), num_cores=6)
+    field = VelocityField2D(solver)
+    XX, YY, Vx, Vy = field.compute((-6, 4), (-3, 3), (200, 120))
     
     # Create FieldData container
     fields = FieldData(XX, YY)

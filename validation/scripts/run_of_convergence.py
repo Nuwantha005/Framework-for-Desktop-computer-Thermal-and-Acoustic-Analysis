@@ -112,6 +112,12 @@ def main():
     parser.add_argument("case_dir", type=Path, help="Path to case directory")
     parser.add_argument("--run-openfoam", action="store_true", 
                        help="Run OpenFOAM workflow (otherwise just analyze existing results)")
+    parser.add_argument("--parallel-snappy", action="store_true",
+                       help="Run snappyHexMesh in parallel (faster for fine meshes)")
+    parser.add_argument("--parallel-from-level", type=int, default=None,
+                       help="Use parallel snappy starting from this level index (0-based)")
+    parser.add_argument("--n-procs", type=int, default=4,
+                       help="Number of MPI processes for parallel snappy (default: 4)")
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     
     args = parser.parse_args()
@@ -174,8 +180,22 @@ def main():
         
         # Run OpenFOAM if requested
         if args.run_openfoam:
-            print(f"Running OpenFOAM workflow...")
-            success = run_openfoam_workflow(level_dir, verbose=args.verbose)
+            # Determine if parallel snappy should be used for this level
+            use_parallel = args.parallel_snappy
+            if args.parallel_from_level is not None:
+                use_parallel = i >= args.parallel_from_level
+            
+            if use_parallel:
+                print(f"Running OpenFOAM workflow (parallel snappyHexMesh)...")
+            else:
+                print(f"Running OpenFOAM workflow...")
+            
+            success = run_openfoam_workflow(
+                level_dir,
+                verbose=args.verbose,
+                parallel_snappy=use_parallel,
+                n_procs=args.n_procs
+            )
             if not success:
                 print(f"Warning: OpenFOAM workflow failed for level {level_name}")
                 continue

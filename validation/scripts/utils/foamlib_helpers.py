@@ -3,11 +3,17 @@ Foamlib utilities for modifying OpenFOAM case files.
 
 Uses foamlib's FoamCase API for structured editing of OpenFOAM dictionaries.
 Reference: notes/AI/lmArena/ChatGPT/foamLib_Useage.md
+
+For running OpenFOAM workflows, this module delegates to OpenFOAMRunner
+which provides additional features like parallel snappyHexMesh execution.
 """
 
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from foamlib import FoamCase
+
+# Import runner for workflow execution
+from validation.adapters.openfoam import OpenFOAMRunner
 
 
 def set_blockmesh_cells(case_dir: Path, cells: Tuple[int, int, int]) -> None:
@@ -155,51 +161,49 @@ def set_blockmesh_domain(
         f["mergePatchPairs"] = []
 
 
-def run_openfoam_workflow(case_dir: Path, verbose: bool = True) -> bool:
+def run_openfoam_workflow(
+    case_dir: Path,
+    verbose: bool = True,
+    parallel_snappy: bool = False,
+    n_procs: int = 4,
+    solver: str = "potentialFoam"
+) -> bool:
     """
-    Run OpenFOAM meshing and solving workflow using foamlib.
+    Run OpenFOAM meshing and solving workflow using OpenFOAMRunner.
     
     Steps:
         1. blockMesh
         2. surfaceFeatureExtract
-        3. snappyHexMesh -overwrite
+        3. snappyHexMesh -overwrite (optionally in parallel)
         4. extrudeMesh
-        5. potentialFoam -writep
+        5. potentialFoam -writep (or specified solver)
+        6. writeCellCentres (for comparison)
     
     Args:
         case_dir: OpenFOAM case directory
         verbose: Print progress
+        parallel_snappy: If True, run snappyHexMesh in parallel using MPI
+            (useful for finer meshes in convergence studies)
+        n_procs: Number of MPI processes for parallel snappy (default: 4)
+        solver: Solver to run (default: potentialFoam)
     
     Returns:
         True if successful
     """
-    case = FoamCase(case_dir)
-    
     try:
-        if verbose:
-            print("  Running blockMesh...")
-        case.block_mesh()
-        
-        if verbose:
-            print("  Running surfaceFeatureExtract...")
-        case.run("surfaceFeatureExtract")
-        
-        if verbose:
-            print("  Running snappyHexMesh...")
-        case.run(["snappyHexMesh", "-overwrite"])
-        
-        if verbose:
-            print("  Running extrudeMesh...")
-        case.run("extrudeMesh")
-        
-        if verbose:
-            print("  Running potentialFoam...")
-        case.run(["potentialFoam", "-writep"])
-        
-        return True
+        runner = OpenFOAMRunner(case_dir, verbose=verbose)
+        success = runner.run_all(
+            solver=solver,
+            use_snappy=True,
+            parallel_snappy=parallel_snappy,
+            n_procs=n_procs,
+            use_extrude=True
+        )
+        return success
         
     except Exception as e:
-        print(f"  Error: {e}")
+        if verbose:
+            print(f"  Error: {e}")
         return False
 
 

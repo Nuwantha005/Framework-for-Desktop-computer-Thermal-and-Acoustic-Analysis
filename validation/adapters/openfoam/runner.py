@@ -219,22 +219,36 @@ class OpenFOAMRunner:
         """
         return self._run_command("decomposePar", "decomposePar", timeout)
     
-    def run_reconstruct_par(self, timeout: float = 600) -> RunResult:
+    def run_reconstruct_par(self, constant_mesh: bool = False, timeout: float = 600) -> RunResult:
         """
         Reconstruct mesh after parallel processing.
         
         Args:
+            constant_mesh: If True, use reconstructParMesh -constant for mesh only
+                (required when snappyHexMesh uses -overwrite)
             timeout: Timeout in seconds
         """
+        if constant_mesh:
+            return self._run_command("reconstructParMesh -constant", "reconstructParMesh", timeout)
         return self._run_command("reconstructPar", "reconstructPar", timeout)
     
-    def run_snappy(self, overwrite: bool = True, parallel: bool = False, timeout: float = 1800) -> RunResult:
+    def _clean_processor_dirs(self):
+        """Remove processor* directories before decomposition."""
+        import shutil
+        for proc_dir in self.case_dir.glob("processor*"):
+            if proc_dir.is_dir():
+                if self.verbose:
+                    print(f"  Removing old processor directory: {proc_dir.name}")
+                shutil.rmtree(proc_dir)
+    
+    def run_snappy(self, overwrite: bool = True, parallel: bool = False, n_procs: int = 4, timeout: float = 1800) -> RunResult:
         """
         Run snappyHexMesh to refine mesh around bodies.
         
         Args:
             overwrite: If True, overwrite existing mesh
             parallel: If True, run in parallel (decompose → snappy → reconstruct)
+            n_procs: Number of MPI processes for parallel run (default: 4)
             timeout: Timeout in seconds (default 30 min)
         
         Note:
@@ -242,6 +256,9 @@ class OpenFOAMRunner:
         """
         if parallel:
             # Parallel snappyHexMesh workflow
+            # 0. Clean old processor directories (required for re-runs)
+            self._clean_processor_dirs()
+            
             # 1. Decompose background mesh
             result = self.run_decompose_par()
             if not result.success:
@@ -250,7 +267,7 @@ class OpenFOAMRunner:
                 return result
             
             # 2. Run snappyHexMesh in parallel
-            cmd = "mpirun -np $(getNumberOfProcessors) snappyHexMesh -parallel"
+            cmd = f"mpirun -np {n_procs} snappyHexMesh -parallel"
             if overwrite:
                 cmd += " -overwrite"
             result = self._run_command(cmd, "snappyHexMesh", timeout)
@@ -260,11 +277,14 @@ class OpenFOAMRunner:
                     print("ERROR: parallel snappyHexMesh failed")
                 return result
             
-            # 3. Reconstruct mesh
-            result = self.run_reconstruct_par()
+            # 3. Reconstruct mesh (use -constant for -overwrite mode)
+            result = self.run_reconstruct_par(constant_mesh=overwrite)
             if not result.success:
                 if self.verbose:
                     print("WARNING: reconstructPar failed, but mesh may be usable")
+            
+            # 4. Clean up processor directories
+            self._clean_processor_dirs()
             
             return result
         else:
@@ -368,6 +388,7 @@ class OpenFOAMRunner:
         solver: str = "potentialFoam",
         use_snappy: bool = True,
         parallel_snappy: bool = False,
+        n_procs: int = 4,
         use_extrude: bool = True
     ) -> bool:
         """
@@ -377,6 +398,7 @@ class OpenFOAMRunner:
             solver: Solver to use
             use_snappy: If True, use snappyHexMesh for body refinement
             parallel_snappy: If True and use_snappy=True, run snappyHexMesh in parallel
+            n_procs: Number of MPI processes for parallel snappy (default: 4)
             use_extrude: If True, run extrudeMesh after snappyHexMesh (recommended for 2D)
         
         Returns:
@@ -403,7 +425,7 @@ class OpenFOAMRunner:
                 if not result.success:
                     print(f"WARNING: surfaceFeatureExtract failed, continuing...")
                 
-                result = self.run_snappy(parallel=parallel_snappy)
+                result = self.run_snappy(parallel=parallel_snappy, n_procs=n_procs)
                 if not result.success:
                     print(f"ERROR: snappyHexMesh failed")
                     return False

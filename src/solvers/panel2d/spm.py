@@ -29,7 +29,7 @@ class SourcePanelSolver(PanelSolver2D):
         """
         super().__init__(mesh, v_inf, aoa)
         
-        # Internal: singularity strengths (not exposed)
+        # Internal: singularity strengths
         self._sigma: NDArray[np.float64] = None
         self._influence_matrices: dict = None
     
@@ -41,6 +41,21 @@ class SourcePanelSolver(PanelSolver2D):
             panel_order="constant",
             panel_geometry="flat"
         )
+    
+    @property
+    def sigma(self) -> NDArray[np.float64]:
+        """
+        Source strengths for each panel.
+        
+        Returns:
+            (N,) array of source strengths
+        
+        Raises:
+            RuntimeError: If solver hasn't been executed yet
+        """
+        if not self._solved:
+            raise RuntimeError("Solver not executed. Call solve() first.")
+        return self._sigma
     
     # --- Implementation of abstract methods ---
     

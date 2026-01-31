@@ -114,75 +114,46 @@ def interpolate_openfoam_to_points(
 
 
 def compute_panel_velocity_at_points(
-    mesh,
-    sigma: NDArray,
-    v_inf: float,
-    aoa: float,
-    points: NDArray,
-    num_cores: int = 6
+    solver,
+    points: NDArray
 ) -> NDArray:
     """
-    Compute panel method velocity at arbitrary points.
+    Compute panel method velocity at arbitrary points using solver.
     
     Args:
-        mesh: Panel method mesh
-        sigma: Source strengths from solver
-        v_inf: Freestream velocity magnitude
-        aoa: Angle of attack (degrees)
+        solver: Solved panel method solver instance
         points: (N, 2) array of (x, y) coordinates
-        num_cores: Number of parallel workers
     
     Returns:
         (N, 2) array of velocity vectors (Vx, Vy)
     
     Examples:
-        >>> from core.geometry import Mesh
         >>> from solvers.panel2d.spm import SourcePanelSolver
         >>> # ... (create mesh and solve)
         >>> points = np.array([[1, 0], [2, 0]])
-        >>> velocities = compute_panel_velocity_at_points(
-        ...     mesh, solver.sigma, 10.0, 0.0, points
-        ... )
+        >>> velocities = compute_panel_velocity_at_points(solver, points)
     """
-    from multiprocessing import Pool
-    from visualization.field2d import _compute_point_velocity
+    # Ensure points are (N, 3) with z=0
+    if points.shape[1] == 2:
+        points_3d = np.column_stack([points, np.zeros(len(points))])
+    else:
+        points_3d = points
     
-    # Extract panel geometry
-    panel_start_indices = mesh.panels[:, 0]
-    nodes_X = mesh.nodes[panel_start_indices, 0]
-    nodes_Y = mesh.nodes[panel_start_indices, 1]
-    S = mesh.areas
-    tx = mesh.tangents[:, 0]
-    ty = mesh.tangents[:, 1]
-    phi = np.arctan2(ty, tx)
-    phi = np.where(phi < 0, phi + 2*np.pi, phi)
-    aoa_rad = np.radians(aoa)
+    # Use solver's velocity_at method
+    velocities_3d = solver.velocity_at(points_3d)
     
-    # Build task list
-    tasks = [
-        (points[i, 0], points[i, 1], sigma, nodes_X, nodes_Y, phi, S, v_inf, aoa_rad)
-        for i in range(len(points))
-    ]
-    
-    # Parallel computation
-    with Pool(processes=num_cores) as pool:
-        results = pool.map(_compute_point_velocity, tasks)
-    
-    return np.array(results)
+    # Return only x,y components
+    return velocities_3d[:, :2]
 
 
 def compare_on_structured_grid(
-    panel_mesh,
-    panel_sigma: NDArray,
+    solver,
     of_cell_centers: NDArray,
     of_velocity: NDArray,
     x_range: Tuple[float, float],
     y_range: Tuple[float, float],
     resolution: Tuple[int, int],
-    v_inf: float,
-    aoa: float,
     body_distance_filter: float = 0.5,
-    num_cores: int = 6,
     verbose: bool = True
 ) -> Dict:
     """
@@ -196,17 +167,13 @@ def compare_on_structured_grid(
     5. Computes error metrics
     
     Args:
-        panel_mesh: Panel method mesh
-        panel_sigma: Source strengths
+        solver: Solved panel method solver instance
         of_cell_centers: (N, 3) OpenFOAM cell centers
         of_velocity: (N, 3) OpenFOAM velocity field
         x_range: (x_min, x_max)
         y_range: (y_min, y_max)
         resolution: (nx, ny) grid resolution
-        v_inf: Freestream velocity
-        aoa: Angle of attack (degrees)
         body_distance_filter: Exclude points within this distance of body
-        num_cores: Number of cores for parallel computation
         verbose: Print progress messages
     
     Returns:
@@ -214,9 +181,9 @@ def compare_on_structured_grid(
     
     Examples:
         >>> results = compare_on_structured_grid(
-        ...     mesh, sigma, of_C, of_U,
+        ...     solver, of_C, of_U,
         ...     (-5, 5), (-5, 5), (100, 80),
-        ...     10.0, 0.0, body_distance_filter=0.5
+        ...     body_distance_filter=0.5
         ... )
         >>> print(f"RMS error: {results['metrics'].rms_error:.4f}")
     """
@@ -232,7 +199,7 @@ def compare_on_structured_grid(
         print(f"  Grid: {nx}×{ny} = {len(grid_points)} points")
     
     # Filter points near bodies
-    panel_centers_2d = panel_mesh.centers[:, :2]
+    panel_centers_2d = solver.mesh.centers[:, :2]
     far_mask = filter_points_near_body(grid_points, panel_centers_2d, body_distance_filter)
     comparison_points = grid_points[far_mask]
     
@@ -256,9 +223,7 @@ def compare_on_structured_grid(
         print(f"  Valid comparison points: {len(comparison_points)}")
     
     # Compute panel method velocity
-    U_pm = compute_panel_velocity_at_points(
-        panel_mesh, panel_sigma, v_inf, aoa, comparison_points, num_cores
-    )
+    U_pm = compute_panel_velocity_at_points(solver, comparison_points)
     
     # Compute error metrics (using velocity magnitude)
     V_of = np.sqrt((U_of_interp**2).sum(axis=1))

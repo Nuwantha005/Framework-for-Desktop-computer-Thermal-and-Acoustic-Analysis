@@ -81,13 +81,8 @@ def extract_panel_values_at_points(
     """
     from visualization.field2d import VelocityField2D
     
-    # Create velocity field evaluator using solver data
-    field = VelocityField2D(
-        mesh=solver.mesh,
-        v_inf=solver.v_inf,
-        aoa=np.degrees(solver.aoa),  # Convert back to degrees
-        source_strengths=solver.sigma
-    )
+    # Create velocity field evaluator using solver
+    field = VelocityField2D(solver)
     
     results = {}
     
@@ -101,7 +96,7 @@ def extract_panel_values_at_points(
         y_range = (coords[1] - delta, coords[1] + delta)
         
         # Compute field on small grid
-        field.compute(x_range=x_range, y_range=y_range, resolution=(3, 3), num_cores=1)
+        field.compute(x_range=x_range, y_range=y_range, resolution=(3, 3))
         
         # Get cached velocity components
         XX, YY, Vx, Vy = field.get_cached()

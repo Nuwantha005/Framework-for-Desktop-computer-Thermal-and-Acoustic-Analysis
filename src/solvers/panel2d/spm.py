@@ -199,7 +199,7 @@ class SourcePanelSolver:
         induced_tan = np.dot(J, self.sigma) / (2 * np.pi)
         
         self.Vt = v_inf_tan + induced_tan
-        self.Vt = np.abs(self.Vt) # because opefoam gives velocity magnitude, we need abs here for comparison
+        #self.Vt = np.abs(self.Vt) # because opefoam gives velocity magnitude, we need abs here for comparison
         self.Cp = 1.0 - (self.Vt / self.v_inf)**2
         
         # Store results in mesh

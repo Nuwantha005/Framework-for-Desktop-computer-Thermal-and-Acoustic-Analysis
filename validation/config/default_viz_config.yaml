@@ -1,0 +1,140 @@
+# Visualization Configuration for Validation Studies
+#
+# Controls appearance and generation of all validation plots.
+# Edit this file and run visualize.py to regenerate plots with new settings.
+
+# Global figure settings
+figure:
+  dpi: 300
+  format: ["png", "pdf"] # Save in multiple formats
+  style: "seaborn-v0_8-paper" # Matplotlib style
+  font_size: 11
+
+# OpenFOAM Convergence Study
+of_convergence:
+  # Field overview plot (finest mesh level)
+  field_overview:
+    enabled: true
+    field: "velocity_magnitude" # or "pressure"
+    show_streamlines: true
+    show_monitoring_points: true
+    point_marker_size: 100
+    point_color: "red"
+    colorbar: true
+    colormap: "viridis"
+
+  # Convergence curves (all points, all quantities)
+  convergence_curves:
+    enabled: true
+    quantities: ["velocity", "pressure"]
+    x_axis: "level_name" # Use level names on x-axis
+    show_change_rate: true # Show rate of change between levels
+    log_scale: false
+    marker_size: 8
+    line_width: 2
+
+  # Individual per-point plots
+  per_point_plots:
+    enabled: true
+    show_gci: true # Show GCI bars if available
+
+  # Combined points on single plot
+  combined_points_plot:
+    enabled: true
+    normalize: false # Normalize values to [0, 1] for comparison
+
+  # Change between consecutive levels
+  change_plots:
+    enabled: true
+    show_relative: true # Show relative change percentage
+
+  # Table output
+  table_output:
+    enabled: true
+    format: ["csv", "latex"]
+    precision: 6
+
+# Panel Method Convergence Study
+panel_convergence:
+  reference_of_level: null # null = auto-select finest; or specify "level_2"
+
+  # Convergence curves with reference line
+  convergence_curves:
+    enabled: true
+    show_of_reference_line: true
+    of_line_style: "--"
+    of_line_color: "red"
+    of_line_width: 2
+    quantities: ["velocity", "pressure"]
+    marker_size: 8
+
+  # Error vs panel count (log-log plot)
+  error_vs_panels:
+    enabled: true
+    error_metric: "relative" # "absolute" or "relative"
+    show_convergence_rate: true # Fit and display power law slope
+    marker_size: 8
+
+  # Per-point value vs panels
+  per_point_plots:
+    enabled: true
+    x_axis: "panel_count"
+    show_reference_line: true
+
+# Surface Comparison (Panel vs OpenFOAM)
+surface_comparison:
+  # Quantities to compare
+  quantities: ["Vt", "Cp"]
+
+  # Show separate plots per component
+  show_by_component: true
+
+  # Error metrics display
+  error_metrics: true
+  error_box_position: [0.02, 0.98] # [x, y] in axes coordinates
+
+  # Interpolation for comparison
+  interpolation_method: "linear" # scipy.interpolate method
+  interpolation_points: 200 # Number of points for common grid
+
+  # Distribution plots
+  distribution_plot:
+    panel_line_style: "-"
+    panel_line_color: "blue"
+    panel_line_width: 2
+    of_line_style: "--"
+    of_line_color: "red"
+    of_line_width: 2
+    show_legend: true
+    grid: true
+
+  # Error/difference plots
+  error_plot:
+    line_color: "green"
+    line_width: 2
+    show_zero_line: true
+    zero_line_style: "--"
+    zero_line_color: "black"
+    grid: true
+
+  # Surface envelope plots (wrapped distribution around body)
+  # Shows quantity values as displacement along surface normal
+  envelope_plots:
+    enabled: true
+    scale: 0.3 # Base scaling factor for envelope displacement
+    scale_Vt: 0.3 # Override scale for tangential velocity
+    scale_Cp: 0.3 # Override scale for pressure coefficient
+    show_whiskers: true # Draw lines from surface to envelope
+    whisker_density: 1 # Plot every Nth whisker (1=all, 2=every other)
+    envelope_alpha: 0.3 # Fill transparency
+    colormap_Vt: "viridis" # Colormap for Vt plots
+    colormap_Cp: "RdBu_r" # Colormap for Cp plots (diverging)
+    invert_Cp: true # Invert Cp so suction peaks outward
+
+# Export options for external tools
+export:
+  # Save raw plot data as JSON for custom visualizations
+  save_plot_data: false
+
+  # Generate data files for external plotting (MATLAB, etc.)
+  external_format: [] # ["json", "mat"]

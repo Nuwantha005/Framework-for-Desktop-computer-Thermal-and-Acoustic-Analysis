@@ -1,7 +1,8 @@
 /notes
 __pycache__/
-*/out
+**/out
 /validation_results
 AGENTS.md 
 .ignore
 opencode.json
+**/of_case/

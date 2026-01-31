@@ -1,0 +1,57 @@
+# OpenFOAM Convergence Study Configuration
+#
+# This file defines the mesh refinement levels and monitoring points
+# for an OpenFOAM mesh convergence study.
+
+# Refinement levels (coarse to fine)
+refinement_levels:
+  - name: "coarse"
+    blockMesh_cells: [80, 60, 1] # [nx, ny, nz] for background mesh
+    components:
+      Single_Square: # Must match component name in case.yaml
+        surface_level: 2 # snappyHexMesh surface refinement
+        feature_level: 2 # snappyHexMesh feature refinement
+
+  - name: "medium"
+    blockMesh_cells: [120, 90, 1]
+    components:
+      Single_Square:
+        surface_level: 3
+        feature_level: 3
+
+  - name: "fine"
+    blockMesh_cells: [160, 120, 1]
+    components:
+      Single_Square:
+        surface_level: 4
+        feature_level: 4
+
+# Monitoring points for convergence analysis
+# Values at these points will be extracted and compared across levels
+monitoring_points:
+  - name: "upstream"
+    coordinates: [-2.0, 0.0] # [x, y] in domain coordinates
+    description: "Upstream freestream point"
+
+  - name: "downstream_near"
+    coordinates: [2.0, 0.0]
+    description: "Near wake point"
+
+  - name: "downstream_far"
+    coordinates: [4.0, 0.0]
+    description: "Far wake point"
+
+  - name: "above"
+    coordinates: [0.0, 2.0]
+    description: "Point above body"
+
+# Convergence criteria
+convergence:
+  gci_threshold: 0.05 # 5% threshold for Grid Convergence Index
+  refinement_ratio: 1.5 # Expected ratio between refinement levels
+
+# Output options
+output:
+  delete_intermediate_cases: false # Keep intermediate time steps
+  save_final_case: true # Keep final converged case
+  verbose: true # Print detailed progress

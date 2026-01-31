@@ -13,6 +13,7 @@ similar to:
 """
 
 from typing import Optional, Tuple, List, Union
+from matplotlib import scale
 import numpy as np
 from numpy.typing import NDArray
 import matplotlib.pyplot as plt
@@ -443,14 +444,16 @@ def plot_dual_surface_envelope(
     v1 = -values1 if invert_values else values1
     v2 = -values2 if invert_values else values2
     
-    # Use same scale for both
-    all_values = np.concatenate([v1, v2])
-    vmin, vmax = np.nanmin(all_values), np.nanmax(all_values)
-    value_range = vmax - vmin if vmax != vmin else 1.0
-    
-    # Compute envelopes
-    disp1 = (v1 - vmin) / value_range * scale
-    disp2 = (v2 - vmin) / value_range * scale
+    # Normalize each dataset independently so they both touch the body at their minima
+    vmin1, vmax1 = np.nanmin(v1), np.nanmax(v1)
+    vmin2, vmax2 = np.nanmin(v2), np.nanmax(v2)
+
+    value_range1 = vmax1 - vmin1 if vmax1 != vmin1 else 1.0
+    value_range2 = vmax2 - vmin2 if vmax2 != vmin2 else 1.0
+
+    # Compute envelopes - each touches body at its minimum
+    disp1 = (v1 - vmin1) / value_range1 * scale
+    disp2 = (v2 - vmin2) / value_range2 * scale
     
     env1_x = x + disp1 * normals[:, 0]
     env1_y = y + disp1 * normals[:, 1]

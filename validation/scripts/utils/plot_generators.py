@@ -212,26 +212,66 @@ def plot_convergence_curves(
         for level_data in data.values():
             point_names.update(level_data.keys())
         point_names = sorted(point_names)
+
+        # Check combined-points config for normalization
+        combined_cfg = config.get(plot_type, {}).get('combined_points_plot', {})
+        normalize = bool(combined_cfg.get('normalize', False))
         
-        # Plot value vs level
-        ax = axes[0]
+        # Build values for all points (preserve per-point missing-level handling)
+        values_by_point = {}
         for point_name in point_names:
-            values = [data[level][point_name][qty] 
-                     for level in level_names if level in data and point_name in data[level]]
-            x = range(len(values))
-            ax.plot(x, values, marker='o', label=point_name, linewidth=2)
+            values = [data[level][point_name][qty]
+                      for level in level_names if level in data and point_name in data[level]]
+            values_by_point[point_name] = [float(v) for v in values]
+
+        # Plot value vs level (with optional per-point/local normalization)
+        ax = axes[0]
+        line_handles = {}
+        minmax_by_point = {}
+        for point_name, vals in values_by_point.items():
+            if normalize:
+                if len(vals) > 0:
+                    vmin = float(min(vals))
+                    vmax = float(max(vals))
+                    if vmax == vmin:
+                        vmax = vmin + 1.0
+                    vals_plot = [((v - vmin) / (vmax - vmin)) for v in vals]
+                    minmax_by_point[point_name] = (vmin, vmax)
+                else:
+                    vals_plot = vals
+                    minmax_by_point[point_name] = None
+            else:
+                vals_plot = vals
+                minmax_by_point[point_name] = None
+
+            x = range(len(vals_plot))
+            line, = ax.plot(x, vals_plot, marker='o', label=point_name, linewidth=2)
+            line_handles[point_name] = line
         
         # Plot reference line if provided
         if reference_values and conv_config.get('show_of_reference_line', False):
             ref_val = reference_values.get(qty)
             if ref_val is not None:
-                ax.axhline(ref_val, 
-                          linestyle=conv_config.get('of_line_style', '--'),
-                          color=conv_config.get('of_line_color', 'red'),
-                          linewidth=2, label='OpenFOAM Reference')
+                if normalize:
+                    # When normalized per-point, draw a horizontal reference line per point
+                    labeled = False
+                    for point_name, mm in minmax_by_point.items():
+                        if mm is None:
+                            continue
+                        vmin, vmax = mm
+                        ref_norm = (ref_val - vmin) / (vmax - vmin)
+                        color = line_handles.get(point_name).get_color() if point_name in line_handles else conv_config.get('of_line_color', 'red')
+                        ax.axhline(ref_norm, linestyle=conv_config.get('of_line_style', '--'), color=color,
+                                  linewidth=2, label=('OpenFOAM Reference' if not labeled else None), alpha=0.8)
+                        labeled = True
+                else:
+                    ax.axhline(ref_val,
+                              linestyle=conv_config.get('of_line_style', '--'),
+                              color=conv_config.get('of_line_color', 'red'),
+                              linewidth=2, label='OpenFOAM Reference')
         
         ax.set_xlabel('Refinement Level')
-        ax.set_ylabel(qty.capitalize())
+        ax.set_ylabel(qty.capitalize() + (" (normalized)" if normalize else ""))
         ax.set_title(f'{qty.capitalize()} Convergence')
         ax.set_xticks(range(len(level_names)))
         ax.set_xticklabels(level_names, rotation=45)
@@ -241,11 +281,15 @@ def plot_convergence_curves(
         # Plot change between levels if requested
         if len(axes) > 1:
             ax = axes[1]
-            for point_name in point_names:
-                values = [data[level][point_name][qty] 
-                         for level in level_names if level in data and point_name in data[level]]
-                changes = [values[i] - values[i-1] for i in range(1, len(values))]
-                x = range(1, len(values))
+            for point_name, vals in values_by_point.items():
+                mm = minmax_by_point.get(point_name)
+                if normalize and mm is not None:
+                    vmin, vmax = mm
+                    vals_plot = [((v - vmin) / (vmax - vmin)) for v in vals]
+                else:
+                    vals_plot = vals
+                changes = [vals_plot[i] - vals_plot[i-1] for i in range(1, len(vals_plot))]
+                x = range(1, len(vals_plot))
                 ax.plot(x, changes, marker='s', label=point_name, linewidth=2)
             
             ax.set_xlabel('Refinement Level')

@@ -6,8 +6,9 @@ and configuration.
 """
 
 from abc import abstractmethod
-from typing import Tuple, Literal
+from typing import Tuple, Literal, Optional
 from dataclasses import dataclass
+from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
@@ -137,6 +138,9 @@ class PanelSolver2D(Solver):
         """
         # Step 1: Build influence matrices
         influence_matrices = self._compute_influence_matrices()
+        
+        # Store for validation use
+        self._influence_matrices = influence_matrices
         
         # Step 2: Solve for singularity strengths
         strengths = self._solve_linear_system(influence_matrices)
@@ -268,6 +272,125 @@ class PanelSolver2D(Solver):
         
         Returns:
             (Vx, Vy) tuple of (M,) arrays
+        """
+        pass
+    
+    # --- Validation methods ---
+    
+    def validate(self, output_dir: Optional[Path] = None, show_plots: bool = False) -> dict:
+        """
+        Validate solver results and generate diagnostic outputs.
+        
+        Args:
+            output_dir: Where to save validation plots (default: auto-detect from case)
+            show_plots: Whether to display plots interactively
+        
+        Returns:
+            Dict with validation metrics and results
+        """
+        if not self._solved:
+            raise RuntimeError("Solver not executed. Call solve() first.")
+        
+        # Setup output directory
+        if output_dir is None:
+            # Try to get case output directory if mesh has case reference
+            if hasattr(self._mesh, 'case') and hasattr(self._mesh.case, 'output_dir'):
+                output_dir = self._mesh.case.output_dir / "validation"
+            else:
+                # Fallback to current directory
+                output_dir = Path.cwd() / "out" / "validation"
+        else:
+            output_dir = Path(output_dir) / "validation"
+        
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        print(f"\n{'='*60}")
+        print("SOLVER VALIDATION")
+        print(f"{'='*60}")
+        print(f"Solver: {self.__class__.__name__}")
+        print(f"Mesh: {self._mesh.num_panels} panels")
+        print(f"Output: {output_dir}")
+        
+        # Common validation
+        bc_results = self._validate_boundary_condition()
+        
+        # Solver-specific validation  
+        specific_results = self._perform_solver_specific_validation(output_dir, show_plots)
+        
+        # Combine results
+        results = {
+            "boundary_condition": bc_results,
+            "solver_specific": specific_results,
+            "output_directory": str(output_dir),
+            "solver_type": self.__class__.__name__
+        }
+        
+        print(f"\nValidation complete. Results saved to: {output_dir}")
+        return results
+    
+    def _validate_boundary_condition(self) -> dict:
+        """Check that boundary condition Vn = 0 is satisfied."""
+        print("\n--- Boundary Condition Validation ---")
+        
+        Vn = self._compute_normal_velocity()
+        
+        if np.any(np.isnan(Vn)):
+            print("WARNING: Could not compute normal velocity")
+            return {"status": "failed", "reason": "computation_failed"}
+        
+        Vn_max = np.max(np.abs(Vn))
+        Vn_rms = np.sqrt(np.mean(Vn**2))
+        Vn_mean = np.mean(Vn)
+        
+        print(f"Normal velocity statistics:")
+        print(f"  Max |Vn|: {Vn_max:.2e}")
+        print(f"  RMS Vn:   {Vn_rms:.2e}")
+        print(f"  Mean Vn:  {Vn_mean:.2e}")
+        
+        return {
+            "Vn_max_abs": float(Vn_max),
+            "Vn_rms": float(Vn_rms), 
+            "Vn_mean": float(Vn_mean),
+            "Vn_distribution": Vn.tolist()
+        }
+    
+    def _compute_normal_velocity(self) -> NDArray[np.float64]:
+        """Compute actual normal velocity at panel centers to verify BC."""
+        normals_2d = self._mesh.normals[:, :2]  # (N, 2)
+        v_inf_2d = self.v_inf_vector[:2]        # (2,)
+        
+        # Freestream normal component
+        Vn_freestream = normals_2d @ v_inf_2d
+        
+        # Induced normal velocity from panels (solver-specific)
+        Vn_induced = self._compute_induced_normal_velocity()
+        
+        # Total normal velocity (should be ≈ 0)
+        Vn_total = Vn_freestream + Vn_induced
+        
+        return Vn_total
+    
+    @abstractmethod
+    def _compute_induced_normal_velocity(self) -> NDArray[np.float64]:
+        """
+        Compute induced normal velocity from singularities.
+        
+        Returns:
+            (N,) array of normal velocity components induced by all panels
+        """
+        pass
+    
+    @abstractmethod
+    def _perform_solver_specific_validation(self, validation_dir: Path, show_plots: bool) -> dict:
+        """
+        Perform solver-specific validation checks and plots.
+        
+        Args:
+            validation_dir: Directory to save validation outputs
+            show_plots: Whether to display plots interactively
+        
+        Returns:
+            Dict with solver-specific validation results
         """
         pass
     

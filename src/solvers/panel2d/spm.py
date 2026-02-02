@@ -2,6 +2,7 @@
 import numpy as np
 from numpy.typing import NDArray
 from typing import Tuple
+from pathlib import Path
 
 from core.geometry.mesh import Mesh
 from .base import PanelSolver2D, PanelMethodConfig
@@ -228,3 +229,79 @@ class SourcePanelSolver(PanelSolver2D):
         Cp = 1.0 - (V_total / self._v_inf)**2
         
         return Cp
+    
+    # --- Validation implementation ---
+    
+    def _compute_induced_normal_velocity(self) -> NDArray[np.float64]:
+        """Compute induced normal velocity from source panels."""
+        if self._influence_matrices is None or 'I' not in self._influence_matrices:
+            raise RuntimeError("Influence matrices not available")
+        
+        I = self._influence_matrices['I']
+        
+        # Induced normal velocity: (I @ sigma) / (2π)
+        Vn_induced = (I @ self._sigma) / (2 * np.pi)
+        
+        # Add self-influence: For source panels, self-influence is σ/2
+        Vn_self = self._sigma / 2
+        
+        return Vn_induced + Vn_self
+    
+    def _perform_solver_specific_validation(self, validation_dir: Path, show_plots: bool) -> dict:
+        """Source panel validation: mass conservation + σ distribution plot."""
+        print("\n--- Source Panel Method Validation ---")
+        
+        # Check mass conservation: Σσ = 0 for closed bodies
+        sigma_sum = np.sum(self._sigma)
+        sigma_max = np.max(self._sigma)
+        sigma_min = np.min(self._sigma)
+        sigma_mean = np.mean(self._sigma)
+        sigma_std = np.std(self._sigma)
+        
+        print(f"Source strength statistics:")
+        print(f"  Sum σ:     {sigma_sum:.2e} (should ≈ 0 for closed bodies)")
+        print(f"  Min σ:     {sigma_min:.6f}")
+        print(f"  Max σ:     {sigma_max:.6f}")
+        print(f"  Mean σ:    {sigma_mean:.6f}")
+        print(f"  Std σ:     {sigma_std:.6f}")
+        
+        # Plot σ distribution using surface_envelope
+        self._plot_source_distribution(validation_dir, show_plots)
+        
+        return {
+            "sigma_sum": float(sigma_sum),
+            "sigma_min": float(sigma_min),
+            "sigma_max": float(sigma_max),
+            "sigma_mean": float(sigma_mean),
+            "sigma_std": float(sigma_std),
+            "mass_conservation_error": float(sigma_sum)
+        }
+    
+    def _plot_source_distribution(self, validation_dir: Path, show_plots: bool):
+        """Plot source strength distribution using surface envelope."""
+        from visualization.surface_envelope import plot_surface_envelope
+        import matplotlib.pyplot as plt
+        
+        # Get surface coordinates
+        centers = self._mesh.centers[:, :2]
+        x, y = centers[:, 0], centers[:, 1]
+        
+        # Create plot
+        fig, ax = plot_surface_envelope(
+            x, y, self._sigma,
+            scale=0.3,
+            quantity_name="σ (source strength)",
+            colormap='RdBu_r',
+            title=f"Source Strength Distribution (N={self._mesh.num_panels} panels)",
+            show_colorbar=True
+        )
+        
+        # Save plot
+        output_file = validation_dir / "source_strength_distribution.png"
+        fig.savefig(output_file, dpi=150, bbox_inches='tight')
+        print(f"  Source distribution plot saved: {output_file}")
+        
+        if show_plots:
+            plt.show()
+        else:
+            plt.close(fig)

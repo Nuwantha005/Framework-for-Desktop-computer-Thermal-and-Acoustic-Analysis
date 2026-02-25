@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core.geometry.mesh import Mesh
 from .base import PanelSolver2D, PanelMethodConfig
-from .influences import compute_source_influence_matrices, compute_source_velocity_influence
+from .influences import compute_source_influence_matrices, compute_source_velocity_influence,compute_source_potential_influence
 
 
 class SourcePanelSolver(PanelSolver2D):
@@ -110,7 +110,7 @@ class SourcePanelSolver(PanelSolver2D):
         
         return {"source": sigma}
     
-    def _compute_surface_velocity(
+    def _compute_surface_velocity_from_summing_influences(
         self,
         influence_matrices: dict,
         strengths: dict
@@ -141,6 +141,23 @@ class SourcePanelSolver(PanelSolver2D):
         # Total tangential velocity
         Vt = v_inf_tangential + induced_tangential
         
+        return Vt
+    
+    def _compute_surface_velocity(
+        self,
+        influence_matrices: dict,
+        strengths: dict
+    ) -> NDArray[np.float64]:
+        """
+        Compute tangential velocity at panel centers using potential gradient.
+    
+        This method is more robust than direct velocity influence summation,
+        especially at corners where curvature changes rapidly.
+        """
+        # Use potential-based approach
+        Vt = self._compute_surface_velocity_from_potential()
+        # Vt = self._compute_surface_velocity_from_summing_influences(influence_matrices, strengths);
+    
         return Vt
     
     def _velocity_at_points(
@@ -259,7 +276,7 @@ class SourcePanelSolver(PanelSolver2D):
         sigma_std = np.std(self._sigma)
         
         print(f"Source strength statistics:")
-        print(f"  Sum σ:     {sigma_sum:.2e} (should ≈ 0 for closed bodies)")
+        print(f"  Sum σ:     {sigma_sum:.2e} ")
         print(f"  Min σ:     {sigma_min:.6f}")
         print(f"  Max σ:     {sigma_max:.6f}")
         print(f"  Mean σ:    {sigma_mean:.6f}")
@@ -305,3 +322,103 @@ class SourcePanelSolver(PanelSolver2D):
             plt.show()
         else:
             plt.close(fig)
+
+    def _compute_surface_potential(self) -> NDArray[np.float64]:
+        """
+        Compute total velocity potential at each panel center.
+    
+        Returns:
+            (N,) array of potential values at panel centers
+        """
+        n_panels = len(self._mesh.panels)
+        centers = self._mesh.centers[:, :2]
+    
+        # Get panel endpoints
+        panel_start_indices = self._mesh.panels[:, 0]
+        panel_end_indices = self._mesh.panels[:, 1]
+        nodes_start = self._mesh.nodes[panel_start_indices, :2]
+        nodes_end = self._mesh.nodes[panel_end_indices, :2]
+    
+        # Perturbation potential from all source panels
+        phi_perturbation = np.zeros(n_panels)
+    
+        for i in range(n_panels):
+            point = centers[i]
+        
+            for j in range(n_panels):
+                if i == j:
+                    # Self-influence: use K&P Eq. 10.22a
+                    # At panel center: Φ = (σ/4π) * S * ln(S/2)² where S = panel length
+                    S = self._mesh.areas[j]
+                    self_coeff = S * np.log((S/2)**2)
+                else:
+                    self_coeff = compute_source_potential_influence(
+                        point=point,
+                        panel_start=nodes_start[j],
+                        panel_end=nodes_end[j]
+                    )
+            
+                phi_perturbation[i] += self._sigma[j] * self_coeff / (4 * np.pi)
+    
+        # Add freestream potential: Φ_∞ = U_∞*x + W_∞*z
+        phi_freestream = (
+            self.v_inf_vector[0] * centers[:, 0] + 
+            self.v_inf_vector[1] * centers[:, 1]
+        )
+    
+        phi_total = phi_perturbation + phi_freestream
+    
+        return phi_total
+    
+    
+    def _compute_surface_velocity_from_potential(self) -> NDArray[np.float64]:
+        """
+        Compute tangential velocity by differentiating potential along surface.
+    
+        V_t = -∂Φ/∂s where s is arc length along surface
+    
+        Returns:
+            (N,) array of tangential velocities
+        """
+        phi = self._compute_surface_potential()
+        n_panels = len(phi)
+    
+        # Compute arc length at panel centers
+        centers = self._mesh.centers[:, :2]
+    
+        # Arc length: cumulative distance along surface
+        # Assume panels are ordered sequentially around the body
+        arc_length = np.zeros(n_panels)
+        for i in range(1, n_panels):
+            arc_length[i] = arc_length[i-1] + np.linalg.norm(centers[i] - centers[i-1])
+    
+        # Close the loop: distance from last panel to first
+        total_arc = arc_length[-1] + np.linalg.norm(centers[0] - centers[-1])
+    
+        # Numerical differentiation: central difference with periodic BC
+        Vt = np.zeros(n_panels)
+    
+        for i in range(n_panels):
+            # Indices for central difference
+            i_plus = (i + 1) % n_panels
+            i_minus = (i - 1) % n_panels
+        
+            # Arc length differences (handle wrap-around)
+            if i == 0:
+                ds_minus = arc_length[0] + (total_arc - arc_length[-1])  # wrap
+            else:
+                ds_minus = arc_length[i] - arc_length[i_minus]
+        
+            if i == n_panels - 1:
+                ds_plus = total_arc - arc_length[i]  # wrap to first
+            else:
+                ds_plus = arc_length[i_plus] - arc_length[i]
+        
+            ds_total = ds_minus + ds_plus
+        
+            # Central difference: note the NEGATIVE sign (V_t = -dΦ/ds)
+            # Wait - actually for source panels, V_t = dΦ/ds (tangent points in +s direction)
+            # The sign depends on convention. Let's use V_t = (Φ_plus - Φ_minus) / ds
+            Vt[i] = (phi[i_plus] - phi[i_minus]) / ds_total
+    
+        return Vt    

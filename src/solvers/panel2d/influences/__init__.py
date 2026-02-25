@@ -10,10 +10,12 @@ for different singularity types:
 
 from .source import (
     compute_source_influence_matrices,
-    compute_source_velocity_influence
+    compute_source_velocity_influence,
+    compute_source_potential_influence
 )
 
 __all__ = [
     'compute_source_influence_matrices',
     'compute_source_velocity_influence',
+    'compute_source_potential_influence'
 ]

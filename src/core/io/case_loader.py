@@ -127,6 +127,8 @@ class CaseLoader:
             bc_type = bc_data.get("type", "wall")
             bc_value = bc_data.get("value", None)
             
+            # local_mesh.normals = -local_mesh.normals
+
             # Create component
             component = Component(
                 name=comp_config.name,

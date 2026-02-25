@@ -406,13 +406,12 @@ def plot_dual_surface_envelope(
     quantity_name: str = "Value",
     color1: str = 'blue',
     color2: str = 'red',
-    show_difference: bool = True,
+    show_difference: bool = False,
     title: Optional[str] = None,
     invert_values: bool = False,
 ) -> Tuple[Figure, Axes]:
     """
     Plot two distributions on the same body for direct comparison.
-    
     Useful for comparing panel method vs OpenFOAM on the same geometry.
     
     Args:
@@ -447,16 +446,17 @@ def plot_dual_surface_envelope(
     # Normalize each dataset independently so they both touch the body at their minima
     vmin1, vmax1 = np.nanmin(v1), np.nanmax(v1)
     vmin2, vmax2 = np.nanmin(v2), np.nanmax(v2)
-
+    
     value_range1 = vmax1 - vmin1 if vmax1 != vmin1 else 1.0
     value_range2 = vmax2 - vmin2 if vmax2 != vmin2 else 1.0
-
+    
     # Compute envelopes - each touches body at its minimum
     disp1 = (v1 - vmin1) / value_range1 * scale
     disp2 = (v2 - vmin2) / value_range2 * scale
     
     env1_x = x + disp1 * normals[:, 0]
     env1_y = y + disp1 * normals[:, 1]
+    
     env2_x = x + disp2 * normals[:, 0]
     env2_y = y + disp2 * normals[:, 1]
     
@@ -465,17 +465,25 @@ def plot_dual_surface_envelope(
     body_y = np.append(y, y[0])
     ax.plot(body_x, body_y, 'k-', linewidth=2.5, zorder=10, label='Body')
     
-    # Plot envelopes with fill
     for env_x, env_y, color, label, alpha in [
         (env1_x, env1_y, color1, label1, 0.25),
         (env2_x, env2_y, color2, label2, 0.25),
     ]:
-        polygon_x = np.concatenate([x, env_x[::-1], [x[0]]])
-        polygon_y = np.concatenate([y, env_y[::-1], [y[0]]])
+        # Filter out NaN values before plotting
+        valid_mask = ~(np.isnan(env_x) | np.isnan(env_y))
+        env_x_clean = env_x[valid_mask]
+        env_y_clean = env_y[valid_mask]
+        x_clean = x[valid_mask]
+        y_clean = y[valid_mask]
+    
+        # Build polygon from cleaned data
+        polygon_x = np.concatenate([x_clean, env_x_clean[::-1]])
+        polygon_y = np.concatenate([y_clean, env_y_clean[::-1]])
+    
         ax.fill(polygon_x, polygon_y, color=color, alpha=alpha, edgecolor='none')
-        
-        closed_x = np.append(env_x, env_x[0])
-        closed_y = np.append(env_y, env_y[0])
+    
+        closed_x = np.append(env_x_clean, env_x_clean[0])
+        closed_y = np.append(env_y_clean, env_y_clean[0])
         ax.plot(closed_x, closed_y, color=color, linewidth=1.5, label=label)
     
     # Show difference regions
@@ -486,7 +494,8 @@ def plot_dual_surface_envelope(
             # Highlight points with large differences
             threshold = max_diff * 0.5
             high_diff_mask = diff > threshold
-            # ax.scatter(x[high_diff_mask], y[high_diff_mask],         c='orange', s=20, zorder=15, label='High difference', alpha=0.7)
+            ax.scatter(x[high_diff_mask], y[high_diff_mask], 
+                      c='orange', s=20, zorder=15, label='High difference', alpha=0.7)
     
     ax.set_aspect('equal')
     ax.set_xlabel('x')

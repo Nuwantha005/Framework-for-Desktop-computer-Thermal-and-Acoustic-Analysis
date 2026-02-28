@@ -7,7 +7,9 @@ The solver module (`solvers`) implements panel method solvers using an abstract 
 ```
 Solver (ABC)                     # Interface: solve(), velocity_at(), surface_velocity
 └── PanelSolver2D (ABC)          # Template method: solve() orchestrates 4 abstract steps
-    └── SourcePanelSolver        # Constant-strength source panels (Katz & Plotkin)
+    ├── SourcePanelSolver        # Constant-strength source panels (Katz & Plotkin)
+    ├── LinearSourcePanelSolver  # Linear-strength source panels (continuous nodes)
+    └── LinearVortexPanelSolver  # Linear-strength vortex panels (zero-circulation closure)
 ```
 
 ### Solver ABC
@@ -65,7 +67,7 @@ Pressure coefficient from Bernoulli:
 
 $$C_p = 1 - \left(\frac{V_t}{V_\infty}\right)^2$$
 
-See the [Theory page](../theory/panel_methods.md) for the full derivation.
+See the [Theory page](../theory/panel_methods_overview.md) for the full derivation.
 
 ## SolverFactory
 
@@ -76,11 +78,13 @@ from solvers import SolverFactory
 
 # List available configurations
 print(SolverFactory.available())
-# {('source', 'constant', 'flat'): 'SourcePanelSolver'}
+# {('source', 'constant', 'flat'): 'SourcePanelSolver',
+#  ('source', 'linear', 'flat'): 'LinearSourcePanelSolver',
+#  ('vortex', 'linear', 'flat'): 'LinearVortexPanelSolver'}
 
 # Create from config (used by Case.create_solver())
 solver = SolverFactory.create_panel_solver(
-    singularity="source",
+    singularity="vortex",
     mesh=mesh,
     v_inf=1.0,
     aoa=0.0
@@ -89,19 +93,32 @@ solver = SolverFactory.create_panel_solver(
 
 ## Influence Coefficients
 
-The `influences/source.py` module computes the geometric integrals analytically:
+The `influences/` subpackage computes geometric integrals analytically for each singularity type:
 
+### Source influences (`influences/source.py`)
 - `compute_source_influence_matrices(mesh)` → `(I, J)` matrices of shape `(N, N)`
 - `compute_source_velocity_influence(point, ...)` → `(Mx, My)` velocity coefficients
 - `compute_source_potential_influence(point, ...)` → potential coefficient
+
+### Linear source influences (`influences/linear_source.py`)
+- `compute_linear_source_influence_matrices(mesh)` → `(I, J)` of shape `(N, N+1)`
+- `compute_linear_source_velocity_field(points, mesh, strengths)` → `(M, 2)` velocity vectors
+
+### Linear vortex influences (`influences/linear_vortex.py`)
+- `compute_linear_vortex_influence_matrices(mesh)` → `(I, J)` of shape `(N, N+1)`
+- `compute_linear_vortex_velocity_influence(point, ...)` → `((Mx_a, My_a), (Mx_b, My_b))`
+- `compute_linear_vortex_velocity_field(points, mesh, gamma)` → `(M, 2)` velocity vectors
+
+The vortex influences are derived from the source influences via the rotation identity $u_{\text{vortex}} = w_{\text{source}}$, $w_{\text{vortex}} = -u_{\text{source}}$.
 
 ## Planned Extensions
 
 | Solver | Singularity | Status |
 |--------|-------------|--------|
 | Constant source | Source, constant strength, flat | ✅ Implemented |
-| Constant vortex | Vortex, constant strength, flat | 🔲 Planned |
-| Linear source | Source, linear strength, flat | 🔲 Planned |
+| Linear source | Source, linear strength, flat | ✅ Implemented |
+| Linear vortex | Vortex, linear strength, flat | ✅ Implemented |
+| Quadratic source | Source, quadratic strength, flat | 🔲 Planned |
 | Source + vortex | Combined with Kutta condition | 🔲 Planned |
 
 ## File Layout
@@ -110,6 +127,11 @@ The `influences/source.py` module computes the geometric integrals analytically:
 |------|----------|
 | `base.py` | `Solver` ABC |
 | `factory.py` | `SolverFactory` registry |
+| `comparison.py` | `SolverComparisonRunner`, `ComparisonResult`, metrics, ranking |
 | `panel2d/base.py` | `PanelMethodConfig`, `PanelSolver2D` ABC |
-| `panel2d/spm.py` | `SourcePanelSolver` implementation (424 lines) |
-| `panel2d/influences/source.py` | Source influence coefficient functions |
+| `panel2d/spm.py` | `SourcePanelSolver` implementation |
+| `panel2d/linear_source_solver.py` | `LinearSourcePanelSolver` implementation |
+| `panel2d/linear_vortex_solver.py` | `LinearVortexPanelSolver` implementation |
+| `panel2d/influences/source.py` | Constant source influence coefficient functions |
+| `panel2d/influences/linear_source.py` | Linear source influence coefficient functions |
+| `panel2d/influences/linear_vortex.py` | Linear vortex influence coefficient functions |

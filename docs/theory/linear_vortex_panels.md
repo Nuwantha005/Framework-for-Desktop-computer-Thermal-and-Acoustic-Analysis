@@ -83,19 +83,19 @@ Matrix viability definitively requires equating unknown degrees with governing a
 
 1. **Geometric Identity Overlap Constraint:**
    By logical definition representing a closed body geometry, the ultimate node directly maps the starting node coordinates structurally enforcing strictly:
-   
-   $$
-   \gamma_1 = \gamma_{N+1}
-   $$
 
-   However, exploiting this single structural constraint directly substituting elements drops our variable unknowns completely to $N$ independent node points against $N$ defined Neumann evaluations resulting in formulating an unmodified $N \times N$ matrix. Uniquely localized solving linear combinations of completely enclosed pure vortex sheets intrinsically generates null spaces since uniformly blanketed vortex layers effectively induce pure zero normal velocity throughout the enclosed surface. The resultant unmodified $N \times N$ formulation inevitably produces a mathematically singular ill-posed matrix lacking single resolution uniqueness.
+$$
+\gamma_1 = \gamma_{N+1}
+$$
+
+However, exploiting this single structural constraint directly substituting elements drops our variable unknowns completely to $N$ independent node points against $N$ defined Neumann evaluations resulting in formulating an unmodified $N \times N$ matrix. Uniquely localized solving linear combinations of completely enclosed pure vortex sheets intrinsically generates null spaces since uniformly blanketed vortex layers effectively induce pure zero normal velocity throughout the enclosed surface. The resultant unmodified $N \times N$ formulation inevitably produces a mathematically singular ill-posed matrix lacking single resolution uniqueness.
 
 2. **Zero Net Circulation Constraint (Physical Closure):**
    A physically robust deterministic approach inherently must eliminate structural null spaces substituting a strictly unambiguous non-lifting circulation constraint bypassing wake-induced Kuttas. Total integral circulation inherently spans:
-   
-   $$
-   \Gamma = \sum_{j=1}^N \frac{\gamma_j + \gamma_{j+1}}{2} S_j = 0
-   $$
+
+$$
+\Gamma = \sum_{j=1}^N \frac{\gamma_j + \gamma_{j+1}}{2} S_j = 0
+$$
 
 **Summary of the Definitive Matrix Closure:**
 Between these constraining options, effectively assigning the **Zero Net Circulation** ($\Gamma = 0$) physical metric uniquely dictates absolute determinable framework closure eliminating arbitrary constants. For reliable programmable solvers mimicking closed-loop boundary geometries, we explicitly incorporate geometric connectivity mapping $\gamma_1 \equiv \gamma_{N+1}$, collapsing functional geometric influences. Consequently, to mathematically stabilize the collapsed redundant singular $N \times N$ matrix, solvers definitively bypass/replace one redundant localized panel normal condition constraint—or systematically append it projecting numerically deterministic least squares equations—structurally constrained exclusively around validating the integral non-lifting circulation requirement $\Gamma = 0$.

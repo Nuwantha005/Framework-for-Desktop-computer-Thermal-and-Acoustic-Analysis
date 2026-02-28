@@ -48,3 +48,24 @@
   - `src/solvers/__init__.py`
   - `.agent/modules/solver.md`
 - **Status**: Complete
+
+### Implement Linear Vortex Solver
+- **What was done**: Implemented linear-strength vortex panel method adapted for non-lifting bluff bodies using Zero Net Circulation closure. Derived vortex influence coefficients from linear source via rotation identity. Validated against OpenFOAM on rounded_square (3.78% Vt rel RMS). Registered solver in factory, comparison framework, and config schemas.
+- **Files created**:
+  - `src/solvers/panel2d/influences/linear_vortex.py` — influence coefficient functions
+  - `src/solvers/panel2d/linear_vortex_solver.py` — solver class with lstsq overdetermined solve
+  - `docs/theory/linear_vortex_panels.md` — full theory documentation
+- **Files modified**:
+  - `src/solvers/__init__.py` — register `("vortex", "linear", "flat")`
+  - `src/solvers/panel2d/__init__.py` — export `LinearVortexPanelSolver`
+  - `src/solvers/comparison.py` — add `"vortex"` / `"linear_vortex"` aliases
+  - `src/core/config/schemas.py` — add `"linear_vortex"` to legacy type Literal
+  - `demos/demo_solver_comparison.py` — add vortex to default solvers list
+  - `mkdocs.yml` — add Linear Vortex Panels to nav
+  - `docs/theory/panel_methods_overview.md` — add link to vortex page
+  - `docs/modules/solver.md` — update architecture, factory, influences, file layout
+  - `.agent/modules/solver.md` — add vortex solver to registered solvers, files, API
+  - `.agent/PROJECT_CONTEXT.md` — mark vortex done, update focus to BL solver phase
+  - `.agent/decisions/README.md` — record zero-circulation closure decision
+  - `.agent/TASK_LOG.md` — this entry
+- **Status**: Complete

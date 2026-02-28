@@ -26,6 +26,7 @@ nav:
       - Overview: theory/panel_methods_overview.md
       - Constant Source Panels: theory/constant_source_panels.md
       - Linear Source Panels: theory/linear_source_panels.md
+      - Linear Vortex Panels: theory/linear_vortex_panels.md
       - Boundary Layers: theory/boundary_layers.md
   - Modules:
       - Geometry: modules/geometry.md

@@ -1,14 +1,15 @@
 # Panel Method Solver — Project Context
-**Last updated**: 2026-02-26
-**Updated by**: agent infrastructure setup
+**Last updated**: 2026-02-28
+**Updated by**: agent — linear vortex solver implementation
 
 ## Current Focus
-> **Phase: Higher-order panels (linear source) → Vt accuracy**
+> **Phase: Viscous BL solver (Von Kármán integral)**
 >
-> Immediate: Implement linear-strength source panels to improve tangential velocity accuracy.
-> Validate via envelope plots comparing against OpenFOAM. Then: viscous BL (Von Kármán
-> integral with multiple velocity profiles), thermal BL (BDIM from Gao 2013), and 3D
-> panel methods with PyVista visualization. All 2D work completes before 3D porting.
+> All three 2D panel solvers now implemented (constant source, linear source, linear vortex).
+> Linear vortex solver provides direct $V_t \equiv \gamma$ extraction at ~3.8% error vs OpenFOAM.
+> Next: implement Von Kármán momentum integral BL solver consuming edge velocity from
+> linear vortex panels. Then thermal BL (BDIM from Gao 2013), and 3D panel methods with
+> PyVista visualization. All 2D work completes before 3D porting.
 >
 > See `.agent/prompts/` for step-by-step guides for each phase.
 
@@ -18,12 +19,12 @@ A 2D panel method solver for potential flow analysis, part of a Final Year Proje
 ## Current State
 - [x] Constant-strength source panel solver (Katz & Plotkin formulation)
 - [x] Linear-strength source panel solver (continuous node-based formulation)
+- [x] Linear-strength vortex panel solver (zero-circulation closure, direct Vt)
 - [x] Case file I/O (YAML cases + JSON geometries)
 - [x] Geometry module (parametric circle/rectangle/rounded_rectangle, STL export)
 - [x] OpenFOAM validation pipeline (meshing, grid independence, comparison)
 - [x] Visualization (contours, streamlines, Cp, surface envelopes, comparison)
 - [x] Post-processing pipeline (pressure, velocity potential, vorticity, stream function)
-- [ ] Vortex panels / lifting bodies
 - [ ] Quadratic strength panels
 - [ ] Viscous boundary layer solver (Von Kármán integral)
 - [ ] Thermal boundary layer solver (BDIM)
@@ -36,7 +37,8 @@ A 2D panel method solver for potential flow analysis, part of a Final Year Proje
 case.yaml ──► CaseLoader ──► Case ──► Scene ──► Mesh (assemble)
                                 │                    │
                                 ▼                    ▼
-                          create_solver()    SourcePanelSolver
+                          create_solver()    SourcePanelSolver / LinearSourcePanelSolver
+                                             / LinearVortexPanelSolver
                                                      │
                                               solve() │
                                                      ▼
@@ -101,7 +103,12 @@ src/
 │   └── panel2d/
 │       ├── base.py                      # PanelSolver2D ABC, PanelMethodConfig
 │       ├── spm.py                       # SourcePanelSolver (constant source)
-│       └── influences/source.py         # Influence coefficient functions
+│       ├── linear_source_solver.py       # LinearSourcePanelSolver
+│       ├── linear_vortex_solver.py       # LinearVortexPanelSolver
+│       └── influences/
+│           ├── source.py                # Constant source influence coefficients
+│           ├── linear_source.py         # Linear source influence coefficients
+│           └── linear_vortex.py         # Linear vortex influence coefficients
 ├── postprocessing/
 │   ├── fields.py                        # FieldData, ScalarField, VectorField
 │   ├── fluid.py                         # FluidState, ReferenceCondition
@@ -154,10 +161,9 @@ src/
   Von Kármán notes, Gao 2013 paper (convert to markdown before use)
 
 ## Roadmap
-1. **Linear-strength source panels** — fix Vt accuracy against OF
-2. **Viscous BL solver** — Von Kármán integral, multiple velocity profiles
-3. **Thermal BL solver** — Reynolds analogy baseline, then full BDIM
-4. **3D panel methods** — Mesh3D, source3d, PyVista visualization
+1. **Viscous BL solver** — Von Kármán integral, multiple velocity profiles
+2. **Thermal BL solver** — Reynolds analogy baseline, then full BDIM
+3. **3D panel methods** — Mesh3D, source3d, PyVista visualization
 5. **3D BL + thermal** — extend BL/thermal solvers for 3D surfaces
 6. **Application** — heat transfer computation for computer components
 

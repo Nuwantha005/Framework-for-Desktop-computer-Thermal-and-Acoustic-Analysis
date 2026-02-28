@@ -18,11 +18,12 @@ This reduces the problem from a 2D/3D field solve to a system of linear equation
 
 ## Current Limitations
 
-- **Source panels only**: No lift generation (no circulation). Suitable for non-lifting bodies.
+- **Source and vortex panels**: Source panels for non-lifting bodies; linear vortex panels with zero-circulation closure for direct $V_t$ extraction. No lift generation.
 - **Inviscid**: No boundary layer, no separation, no wake.
 - **2D only**: 3D panel methods planned for future phases.
 
 
 - [Constant-Strength Source Panels](constant_source_panels.md)
 - [Linear-Strength Source Panels](linear_source_panels.md)
+- [Linear-Strength Vortex Panels](linear_vortex_panels.md)
 

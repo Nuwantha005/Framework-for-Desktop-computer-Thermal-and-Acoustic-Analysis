@@ -17,13 +17,14 @@ A 2D panel method solver for potential flow analysis, part of a Final Year Proje
 
 ## Current State
 - [x] Constant-strength source panel solver (Katz & Plotkin formulation)
+- [x] Linear-strength source panel solver (continuous node-based formulation)
 - [x] Case file I/O (YAML cases + JSON geometries)
 - [x] Geometry module (parametric circle/rectangle/rounded_rectangle, STL export)
 - [x] OpenFOAM validation pipeline (meshing, grid independence, comparison)
 - [x] Visualization (contours, streamlines, Cp, surface envelopes, comparison)
 - [x] Post-processing pipeline (pressure, velocity potential, vorticity, stream function)
 - [ ] Vortex panels / lifting bodies
-- [ ] Higher-order panels (linear/quadratic strength)
+- [ ] Quadratic strength panels
 - [ ] Viscous boundary layer solver (Von Kármán integral)
 - [ ] Thermal boundary layer solver (BDIM)
 - [ ] Coupled inviscid-viscous iteration

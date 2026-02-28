@@ -10,6 +10,7 @@ from .surface_envelope import (
     plot_dual_surface_envelope,
     compute_outward_normals,
 )
+from .solver_comparison import SolverComparisonVisualizer
 
 # Legacy exports (prefer Visualizer for new code)
 from .mesh_plot import MeshPlotter, quick_plot_mesh, quick_plot_component, quick_plot_scene
@@ -31,6 +32,8 @@ __all__ = [
     'plot_surface_envelope_comparison',
     'plot_dual_surface_envelope',
     'compute_outward_normals',
+    # Solver comparison
+    'SolverComparisonVisualizer',
     # Legacy
     'MeshPlotter',
     'quick_plot_mesh',

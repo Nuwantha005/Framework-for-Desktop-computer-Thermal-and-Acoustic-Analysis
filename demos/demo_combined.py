@@ -58,7 +58,7 @@ def main():
         print("Error: Solver failed")
         sys.exit(1)
     
-    print(f"  Cp range: [{min(solver.Cp):.4f}, {max(solver.Cp):.4f}]")
+    print(f"  Cp range: [{solver.Cp.min():.4f}, {solver.Cp.max():.4f}]")
     
     # Visualization domain (directly from case)
     x_range = case.x_range

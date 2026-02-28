@@ -236,25 +236,48 @@ class Case:
         """Solver tolerance."""
         return self.config.solver.tolerance
     
-    def create_solver(self) -> "Solver":
+    def create_solver(self, solver_type: Optional[str] = None) -> "Solver":
         """
         Create solver instance from case configuration.
-        
+
+        Args:
+            solver_type: Optional solver type override. Accepts legacy format
+                strings such as "constant_source" or "linear_source", or short
+                aliases like "constant" / "linear".  When *None*, the solver
+                type from ``case.yaml`` is used.
+
         Returns:
-            Solver instance configured from case settings (mesh, v_inf, aoa)
-        
+            Solver instance configured from case settings (mesh, v_inf, aoa).
+
         Example:
             >>> case = CaseLoader.load_case('cases/cylinder_flow')
             >>> solver = case.create_solver()
             >>> solver.solve()
-            >>> velocities = solver.velocity_at(points)
+
+            >>> # Override solver without editing case.yaml
+            >>> solver_lin = case.create_solver(solver_type="linear_source")
         """
         from solvers.factory import SolverFactory
+
+        if solver_type is not None:
+            from core.config.schemas import SolverConfig
+            override = SolverConfig(
+                type=solver_type,
+                tolerance=self.config.solver.tolerance,
+                max_iterations=self.config.solver.max_iterations,
+            )
+            return SolverFactory.create(
+                config=override,
+                mesh=self.mesh,
+                v_inf=self.v_inf,
+                aoa=self.aoa,
+            )
+
         return SolverFactory.create(
             config=self.config.solver,
             mesh=self.mesh,
             v_inf=self.v_inf,
-            aoa=self.aoa
+            aoa=self.aoa,
         )
     
     # -------------------------------------------------------------------------

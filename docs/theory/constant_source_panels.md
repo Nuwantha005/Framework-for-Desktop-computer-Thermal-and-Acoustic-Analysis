@@ -1,24 +1,8 @@
-# Panel Method Theory
+# Constant-Strength Source Panels
 
-This page describes the mathematical formulation implemented in the solver.
+This page describes the mathematical formulation implemented in the solver for the constant-strength source panel method.
 
-## Potential Flow
-
-The solver assumes incompressible, irrotational, inviscid flow. Under these assumptions, the velocity field can be expressed as the gradient of a scalar potential:
-
-$$\mathbf{V} = \nabla\phi$$
-
-where the velocity potential $\phi$ satisfies Laplace's equation everywhere outside the body:
-
-$$\nabla^2 \phi = 0$$
-
-## Panel Method Concept
-
-Instead of solving Laplace's equation on a volume mesh, panel methods reformulate the problem as a boundary integral equation. The body surface is discretized into $N$ flat **panels**, and a singularity distribution (source, vortex, or doublet) is placed on each panel. The strengths of these singularities are determined by enforcing boundary conditions at **control points** (panel midpoints).
-
-This reduces the problem from a 2D/3D field solve to a system of $N$ linear equations — a significant computational advantage.
-
-## Constant-Strength Source Panel Method
+## Formulation Concept
 
 The current implementation uses **constant-strength source panels** following the formulation in Katz & Plotkin, *Low-Speed Aerodynamics* (2nd ed.), Chapter 10.
 
@@ -90,13 +74,8 @@ $$\sum_{j=1}^{N} \sigma_j S_j = 0$$
 
 where $S_j$ is the length of panel $j$. This serves as a useful validation check.
 
-## Current Limitations
-
-- **Source panels only**: No lift generation (no circulation). Suitable for non-lifting bodies.
-- **Constant strength**: Accuracy limited by panel density, especially at high curvature regions.
-- **Inviscid**: No boundary layer, no separation, no wake.
-- **2D only**: 3D panel methods planned for future phases.
 
 ## References
 
 1. Katz, J. and Plotkin, A., *Low-Speed Aerodynamics* (2nd ed.), Cambridge University Press, 2001. Chapters 9–11.
+

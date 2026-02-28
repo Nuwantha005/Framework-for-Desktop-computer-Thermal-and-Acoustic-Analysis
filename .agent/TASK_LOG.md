@@ -36,3 +36,15 @@
   - `.agent/PROJECT_CONTEXT.md` — added Current Focus section, agent infrastructure section, roadmap
   - `AGENTS.md` — added Pylance MCP, agent context system, prompts index, current focus, limitations update
 - **Status**: Complete
+
+## 2026-02-28
+### Implement Linear Source Solver
+- **What was done**: Implemented linear source panel method following Katz & Plotkin formulas.
+- **Files created**: 
+  - `src/solvers/panel2d/influences/linear_source.py`
+  - `src/solvers/panel2d/linear_source_solver.py`
+  - `docs/theory/linear_source_panels.md`
+- **Files modified**:
+  - `src/solvers/__init__.py`
+  - `.agent/modules/solver.md`
+- **Status**: Complete

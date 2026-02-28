@@ -15,12 +15,12 @@ components:
         corner_radius: 0.09
         center: [0.0, 0.0]
     mesh_levels:
-      - [2, 2]      # Level 0: 8 panels (coarse)
-      - [4, 4]      # Level 1: 16 panels
-      - [8, 8]      # Level 2: 32 panels
-      - [16, 16]    # Level 3: 64 panels
-      - [32, 32]    # Level 4: 128 panels (fine)
-      - [64, 64]    # Level 5: extreamly fine
+      - [2, 2] # Level 0: 8 panels (coarse)
+      - [4, 4] # Level 1: 16 panels
+      - [8, 8] # Level 2: 32 panels
+      - [16, 16] # Level 3: 64 panels
+      - [32, 32] # Level 4: 128 panels (fine)
+      - [64, 64] # Level 5: extreamly fine
     transform:
       translation: [0.0, 0.0, 0.0]
       rotation_deg: 0.0

@@ -39,7 +39,7 @@ def main():
     
     try:
         # Load case
-        case = CaseLoader.load_case(case_dir,mesh_level_index=-1)
+        case = CaseLoader.load_case(case_dir,mesh_level_index=0)
         print(f"✓ Case loaded: {case.name}")
         
         # Create and solve

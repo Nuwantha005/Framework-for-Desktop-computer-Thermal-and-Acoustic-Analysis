@@ -1,14 +1,35 @@
 """Panel method solvers."""
 
 from .panel2d.spm import SourcePanelSolver
+from .panel2d.linear_source_solver import LinearSourcePanelSolver
 from .factory import SolverFactory
 from .base import Solver
 
 # Register available solvers
 SolverFactory.register("source", "constant", "flat", SourcePanelSolver)
+SolverFactory.register("source", "linear", "flat", LinearSourcePanelSolver)
+
+
+def __getattr__(name):
+    """Lazy import for comparison module (avoids circular import at init time)."""
+    if name == "SolverComparisonRunner":
+        from .comparison import SolverComparisonRunner
+        return SolverComparisonRunner
+    if name == "ComparisonResult":
+        from .comparison import ComparisonResult
+        return ComparisonResult
+    if name == "SolverResult":
+        from .comparison import SolverResult
+        return SolverResult
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "SourcePanelSolver",
+    "LinearSourcePanelSolver",
     "SolverFactory",
     "Solver",
+    "SolverComparisonRunner",
+    "ComparisonResult",
+    "SolverResult",
 ]

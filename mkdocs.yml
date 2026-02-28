@@ -23,7 +23,9 @@ nav:
       - Case Files: user_guide/case_files.md
       - Running Validation: user_guide/validation.md
   - Theory:
-      - Panel Methods: theory/panel_methods.md
+      - Overview: theory/panel_methods_overview.md
+      - Constant Source Panels: theory/constant_source_panels.md
+      - Linear Source Panels: theory/linear_source_panels.md
       - Boundary Layers: theory/boundary_layers.md
   - Modules:
       - Geometry: modules/geometry.md

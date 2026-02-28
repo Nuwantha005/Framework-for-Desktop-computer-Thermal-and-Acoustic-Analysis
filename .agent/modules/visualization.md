@@ -5,7 +5,7 @@
 - `visualizer.py` (654 lines) — `OutputManager` (directory/timestamp handling); `Visualizer` facade: `create_figure()`, `plot_mesh()`, `plot_scene()`, `plot_contours()`, `plot_streamlines()`, `plot_cp()`, `finalize()`
 - `field2d.py` (204 lines) — `VelocityField2D`: `compute(x_range, y_range, resolution)` → (XX, YY, Vx, Vy); per-component body masking; result caching
 - `comparison.py` (978 lines) — `FieldSeries`, `LineSeries`, `ComparisonMetrics` dataclasses; `ComparisonVisualizer`: `compare_contours()`, `plot_difference()`, `compare_lines()`, `compute_metrics()`
-- `solver_comparison.py` — `SolverComparisonVisualizer`: generates Vt/Cp envelope overlays, arc-length line charts, difference plots, and metrics tables for inter-solver comparison
+- `solver_comparison.py` — `SolverComparisonVisualizer`: generates Vt/Cp envelope overlays, arc-length line charts, difference plots, metrics tables, and ranking charts for inter-solver + OF reference comparison. Outputs to `<case>/out/solver_comparison/`. OF reference drawn as dashed dark-grey line.
 - `panel2d.py` (184 lines) — `PanelVisualizer2D` (legacy): `compute_field()`, `plot_streamlines()`, `plot_contours()`
 - `mesh_plot.py` (364 lines) — `MeshPlotter`; quick helpers: `quick_plot_mesh()`, `quick_plot_component()`, `quick_plot_scene()`
 - `surface_envelope.py` (509 lines) — `compute_outward_normals()`, `plot_surface_envelope()`, `plot_surface_envelope_comparison()`, `plot_dual_surface_envelope()`
@@ -17,12 +17,12 @@
 - `Visualizer(output_dir, protect_overwrite)` → `.create_figure()` → `.plot_contours()` → `.finalize(save, show)`
 - `VelocityField2D(solver)` → `.compute(x_range, y_range, resolution)` → (XX, YY, Vx, Vy)
 - `ComparisonVisualizer(output_dir)` → `.compare_contours(fields, mesh)` → Figure
-- `SolverComparisonVisualizer(result, output_dir)` → `.plot_all(show, save)` — plots: `vt_envelope`, `cp_envelope`, `vt_arc_length`, `cp_arc_length`, `vt_dual`, `vt_difference`, `metrics_table`
+- `SolverComparisonVisualizer(result, output_dir, subfolder="solver_comparison")` → `.plot_all(show, save)` — plots: `vt_envelope`, `cp_envelope`, `vt_arc_length`, `cp_arc_length`, `vt_dual`, `vt_difference`, `metrics_table`, `ranking`
 
 ## Data Flow
 Solver → `VelocityField2D.compute()` → grid data → `Visualizer.plot_contours/streamlines()` → matplotlib figure → `finalize(save/show)`
 
-`ComparisonResult` → `SolverComparisonVisualizer.plot_all()` → envelope/line/diff/table PNGs under `<case>/out/solver_cmp_*.png`
+`ComparisonResult` → `SolverComparisonVisualizer.plot_all()` → envelope/line/diff/table/ranking PNGs under `<case>/out/solver_comparison/solver_cmp_*.png`
 
 ## Dependencies
 - Internal: `core.geometry.mesh.Mesh`, `solvers.base.Solver`, `solvers.comparison.ComparisonResult`

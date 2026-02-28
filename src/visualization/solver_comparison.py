@@ -2,9 +2,10 @@
 Solver comparison visualization.
 
 Generate side-by-side and overlay plots comparing surface quantities
-(Vt, Cp) across multiple solver formulations. Uses the existing
-surface_envelope plotting functions for envelope overlays and adds
-additional comparison-specific plots (difference, arc-length line).
+(Vt, Cp) across multiple panel method solvers and optional OpenFOAM
+reference data. Uses the existing surface_envelope plotting functions
+for envelope overlays and adds comparison-specific plots (difference,
+arc-length line, metrics table, ranking).
 """
 
 from __future__ import annotations
@@ -24,15 +25,25 @@ from visualization.surface_envelope import (
 )
 
 if TYPE_CHECKING:
-    from solvers.comparison import ComparisonResult
+    from solvers.comparison import ComparisonResult, SolverResult
 
 
 # Default colour palette (colourblind-friendly, matching project style)
 DEFAULT_COLORS = ["#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd", "#8c564b"]
+REFERENCE_COLOR = "#333333"  # dark grey for OpenFOAM reference
+REFERENCE_STYLE: Dict = dict(color=REFERENCE_COLOR, linewidth=2.0, linestyle="--", alpha=0.85)
+
+# Default subfolder name for solver comparisons
+COMPARISON_SUBFOLDER = "solver_comparison"
 
 
 class SolverComparisonVisualizer:
     """Produce comparison plots from a ComparisonResult.
+
+    Output is saved to ``<output_dir>/solver_comparison/`` by default.
+    When an OpenFOAM reference is present in the result, it is drawn as
+    a dashed dark-grey line in every plot so panel solvers can be compared
+    visually against CFD.
 
     Usage::
 
@@ -40,7 +51,8 @@ class SolverComparisonVisualizer:
         from visualization.solver_comparison import SolverComparisonVisualizer
 
         runner = SolverComparisonRunner(case)
-        result = runner.run(["constant_source", "linear_source"])
+        result = runner.run(["constant", "linear"],
+                            of_case_dir=Path("cases/rounded_square/of_case/cases/level_4"))
 
         viz = SolverComparisonVisualizer(result, output_dir=case.output_dir)
         viz.plot_all(show=True)
@@ -51,10 +63,28 @@ class SolverComparisonVisualizer:
         result: "ComparisonResult",
         output_dir: Optional[Path] = None,
         colors: Optional[List[str]] = None,
+        *,
+        subfolder: str = COMPARISON_SUBFOLDER,
     ) -> None:
         self.result = result
-        self.output_dir = Path(output_dir) if output_dir else None
-        self.colors = colors or DEFAULT_COLORS[: len(result.results)]
+        # Resolve output directory — always use a subfolder
+        if output_dir is not None:
+            base = Path(output_dir)
+            self.output_dir = base / subfolder if subfolder else base
+        else:
+            self.output_dir = None
+
+        # Assign colours — skip reference (it uses REFERENCE_STYLE)
+        solver_count = len(result.solver_results) if hasattr(result, "solver_results") else len(result.results)
+        self.colors = colors or DEFAULT_COLORS[:solver_count]
+
+    # ── helpers ─────────────────────────────────────────────────────────
+
+    def _has_reference(self) -> bool:
+        return self.result.reference is not None
+
+    def _solver_results(self) -> List["SolverResult"]:
+        return self.result.solver_results
 
     # ── public API ──────────────────────────────────────────────────────
 
@@ -75,7 +105,7 @@ class SolverComparisonVisualizer:
             envelope_scale: Scale factor for envelope displacement.
 
         Returns:
-            Dict mapping plot name → Figure.
+            Dict mapping plot name -> Figure.
         """
         figures: Dict[str, Figure] = {}
 
@@ -84,12 +114,16 @@ class SolverComparisonVisualizer:
         figures["vt_arc_length"] = self.plot_vt_vs_arc_length()
         figures["cp_arc_length"] = self.plot_cp_vs_arc_length()
 
-        if len(self.result.results) == 2:
+        solver_results = self._solver_results()
+        if len(solver_results) == 2:
             figures["vt_dual"] = self.plot_vt_dual_envelope(scale=envelope_scale)
             figures["vt_difference"] = self.plot_vt_difference()
 
         if self.result.metrics:
             figures["metrics_table"] = self.plot_metrics_table()
+
+        if self.result.ranking:
+            figures["ranking"] = self.plot_ranking()
 
         if save and self.output_dir is not None:
             self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -109,7 +143,7 @@ class SolverComparisonVisualizer:
     # ── envelope plots ──────────────────────────────────────────────────
 
     def plot_vt_envelope(self, scale: float = 0.3) -> Figure:
-        """Overlay Vt surface envelopes from all solvers."""
+        """Overlay Vt surface envelopes from all solvers (+ OF reference)."""
         r = self.result
         fig, ax = plot_surface_envelope_comparison(
             x_list=r.x_list,
@@ -118,9 +152,8 @@ class SolverComparisonVisualizer:
             labels=r.labels,
             scale=scale,
             quantity_name="Vt",
-            colors=self.colors,
-            title=f"Tangential Velocity Envelope — {r.case.name} "
-                  f"({r.case.num_panels} panels)",
+            colors=self._all_colors(),
+            title=self._title("Tangential Velocity Envelope"),
         )
         return fig
 
@@ -134,19 +167,19 @@ class SolverComparisonVisualizer:
             labels=r.labels,
             scale=scale,
             quantity_name="Cp",
-            colors=self.colors,
+            colors=self._all_colors(),
             invert_values=True,
-            title=f"Pressure Coefficient Envelope — {r.case.name} "
-                  f"({r.case.num_panels} panels)",
+            title=self._title("Pressure Coefficient Envelope"),
         )
         return fig
 
     def plot_vt_dual_envelope(self, scale: float = 0.3) -> Figure:
-        """Dual envelope for exactly two solvers (same body, two envelopes)."""
-        if len(self.result.results) < 2:
+        """Dual envelope for exactly two panel-method solvers."""
+        solvers = self._solver_results()
+        if len(solvers) < 2:
             raise ValueError("Dual envelope requires at least 2 solver results")
 
-        r0, r1 = self.result.results[0], self.result.results[1]
+        r0, r1 = solvers[0], solvers[1]
         fig, ax = plot_dual_surface_envelope(
             x=r0.surface.x,
             y=r0.surface.y,
@@ -166,35 +199,41 @@ class SolverComparisonVisualizer:
     # ── line plots (Vt / Cp vs arc length) ──────────────────────────────
 
     def plot_vt_vs_arc_length(self) -> Figure:
-        """Plot Vt vs arc-length s for all solvers on a standard line chart."""
+        """Plot Vt vs arc-length s for all solvers (+ OF reference)."""
         return self._plot_quantity_vs_arc_length(
             quantity="Vt",
             ylabel=r"$V_t / V_\infty$",
-            title=f"Tangential Velocity vs Arc Length — {self.result.case.name}",
+            title=self._title("Tangential Velocity vs Arc Length"),
         )
 
     def plot_cp_vs_arc_length(self) -> Figure:
-        """Plot Cp vs arc-length s for all solvers."""
+        """Plot Cp vs arc-length s for all solvers (+ OF reference)."""
         return self._plot_quantity_vs_arc_length(
             quantity="Cp",
             ylabel=r"$C_p$",
-            title=f"Pressure Coefficient vs Arc Length — {self.result.case.name}",
+            title=self._title("Pressure Coefficient vs Arc Length"),
             invert_yaxis=True,
         )
 
     # ── difference plot ─────────────────────────────────────────────────
 
     def plot_vt_difference(self) -> Figure:
-        """Plot Vt difference between first two solvers vs arc length."""
-        if len(self.result.results) < 2:
+        """Plot Vt difference between first two panel-method solvers."""
+        solvers = self._solver_results()
+        if len(solvers) < 2:
             raise ValueError("Difference plot requires at least 2 solver results")
 
-        r0, r1 = self.result.results[0], self.result.results[1]
+        r0, r1 = solvers[0], solvers[1]
         s = r0.surface.s
         diff = r1.surface.Vt - r0.surface.Vt
 
         fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True,
                                  gridspec_kw={"height_ratios": [3, 1]})
+
+        # If reference, draw it on top panel
+        ref = self.result.reference
+        if ref is not None:
+            axes[0].plot(ref.surface.s, ref.surface.Vt, label=ref.label, **REFERENCE_STYLE)
 
         # Top: both Vt curves
         axes[0].plot(s, r0.surface.Vt, color=self.colors[0], label=r0.label, linewidth=1.5)
@@ -254,12 +293,66 @@ class SolverComparisonVisualizer:
         table.auto_set_font_size(False)
         table.set_fontsize(9)
         table.scale(1.0, 1.4)
-        ax.set_title(f"Solver Comparison Metrics — {self.result.case.name}",
+
+        # Highlight best row (lowest Vt rel%) in green
+        if self.result.ranking:
+            best_label = self.result.ranking[0][0]
+            for row_idx, row_data in enumerate(rows):
+                if row_data[0].startswith(best_label):
+                    for col_idx in range(len(col_labels)):
+                        table[row_idx + 1, col_idx].set_facecolor("#d4edda")
+
+        ax.set_title(self._title("Comparison Metrics"),
                      fontsize=11, pad=12)
         fig.tight_layout()
         return fig
 
+    # ── ranking chart ───────────────────────────────────────────────────
+
+    def plot_ranking(self) -> Figure:
+        """Horizontal bar chart ranking solvers by Vt relative-L2 vs reference."""
+        ranking = self.result.ranking
+        if not ranking:
+            fig, ax = plt.subplots(figsize=(6, 2))
+            ax.text(0.5, 0.5, "No ranking available", ha="center", va="center")
+            ax.axis("off")
+            return fig
+
+        labels = [r[0] for r in ranking]
+        values = [r[1] for r in ranking]
+
+        fig, ax = plt.subplots(figsize=(8, max(3, 0.6 * len(labels) + 1.5)))
+        bar_colors = ["#2ca02c" if i == 0 else "#1f77b4" for i in range(len(labels))]
+        bars = ax.barh(labels[::-1], values[::-1], color=bar_colors[::-1], edgecolor="white")
+
+        # Annotate values
+        for bar, val in zip(bars, values[::-1]):
+            ax.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height() / 2,
+                    f"{val:.2f}%", va="center", fontsize=9)
+
+        ax.set_xlabel("Relative Vt RMS Error (%)")
+        ax.set_title(self._title("Solver Ranking vs Reference"))
+        ax.grid(True, axis="x", alpha=0.3)
+        fig.tight_layout()
+        return fig
+
     # ── internal helpers ────────────────────────────────────────────────
+
+    def _title(self, base: str) -> str:
+        """Build a plot title with case name and panel count."""
+        return f"{base} — {self.result.case.name} ({self.result.case.num_panels} panels)"
+
+    def _all_colors(self) -> List[str]:
+        """Return colour list matching all results (reference gets REFERENCE_COLOR)."""
+        colors = []
+        solver_idx = 0
+        for r in self.result.results:
+            if r.is_reference:
+                colors.append(REFERENCE_COLOR)
+            else:
+                colors.append(self.colors[solver_idx % len(self.colors)])
+                solver_idx += 1
+        return colors
 
     def _plot_quantity_vs_arc_length(
         self,
@@ -268,13 +361,26 @@ class SolverComparisonVisualizer:
         title: str,
         invert_yaxis: bool = False,
     ) -> Figure:
-        """Generic arc-length line plot for a named surface quantity."""
+        """Generic arc-length line plot for a named surface quantity.
+
+        The OpenFOAM reference (if present) is drawn as a dashed grey line.
+        Panel-method solvers use solid coloured lines.
+        """
         fig, ax = plt.subplots(figsize=(10, 5))
 
-        for i, r in enumerate(self.result.results):
+        # Draw reference first (behind solver curves)
+        ref = self.result.reference
+        if ref is not None:
+            s = ref.surface.s
+            vals = getattr(ref.surface, quantity)
+            ax.plot(s, vals, label=ref.label, **REFERENCE_STYLE)
+
+        # Draw panel-method solver curves
+        for i, r in enumerate(self._solver_results()):
             s = r.surface.s
             vals = getattr(r.surface, quantity)
-            ax.plot(s, vals, color=self.colors[i], label=r.label, linewidth=1.5)
+            ax.plot(s, vals, color=self.colors[i % len(self.colors)],
+                    label=r.label, linewidth=1.5)
 
         ax.set_xlabel("Arc length s")
         ax.set_ylabel(ylabel)

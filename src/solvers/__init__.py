@@ -21,6 +21,9 @@ def __getattr__(name):
     if name == "SolverResult":
         from .comparison import SolverResult
         return SolverResult
+    if name == "extract_openfoam_reference":
+        from .comparison import extract_openfoam_reference
+        return extract_openfoam_reference
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -32,4 +35,5 @@ __all__ = [
     "SolverComparisonRunner",
     "ComparisonResult",
     "SolverResult",
+    "extract_openfoam_reference",
 ]

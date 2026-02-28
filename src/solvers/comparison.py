@@ -423,12 +423,25 @@ class SolverComparisonRunner:
         comparison = ComparisonResult(case=self.case)
 
         # ── Extract OpenFOAM reference (if requested) ───────────────────
+        # When an OF case is provided we also discover the STL reference
+        # geometry so that panel-method surface extraction uses the same
+        # arc-length origin (landmark="min_x") as the OF extractor.
+        reference_stl: Optional[str] = None
         if of_case_dir is not None:
+            resolved_of = Path(of_case_dir).resolve()
             of_result = extract_openfoam_reference(
-                self.case, Path(of_case_dir).resolve(), verbose=verbose,
+                self.case, resolved_of, verbose=verbose,
             )
             of_result.label = of_label
             comparison.results.append(of_result)
+
+            # Locate STL used by the OF case for geometry-projected arc length
+            stl_dir = resolved_of / "constant" / "triSurface"
+            stl_files = list(stl_dir.glob("*.stl")) if stl_dir.exists() else []
+            if stl_files:
+                reference_stl = str(stl_files[0])
+                if verbose:
+                    print(f"  Reference STL for arc length: {Path(reference_stl).name}")
 
         # ── Run panel-method solvers ────────────────────────────────────
         for solver_type, label in zip(resolved, labels):
@@ -449,9 +462,29 @@ class SolverComparisonRunner:
                 print(f"  Vt range: [{solver.Vt.min():.4f}, {solver.Vt.max():.4f}]")
                 print(f"  Cp range: [{solver.Cp.min():.4f}, {solver.Cp.max():.4f}]")
 
-            # Extract surface data
+            # Extract surface data — use STL reference geometry when available
+            # so that the arc-length origin matches the OF extractor's
+            # normalize_arc_length(landmark="min_x") convention.
             extractor = SurfaceDataExtractor(self.case.mesh, solver)
-            surface = extractor.extract(arc_length=True)
+            surface = extractor.extract(
+                arc_length=True,
+                reference_geometry=reference_stl,
+            )
+
+            # After normalize_arc_length wraps s via modulo, data is no
+            # longer monotonic in s.  Sort so line plots are continuous.
+            if surface.s is not None:
+                sort_idx = np.argsort(surface.s)
+                surface = SurfaceData(
+                    x=surface.x[sort_idx],
+                    y=surface.y[sort_idx],
+                    s=surface.s[sort_idx],
+                    Vt=surface.Vt[sort_idx],
+                    Vn=surface.Vn[sort_idx] if surface.Vn is not None else None,
+                    Cp=surface.Cp[sort_idx],
+                    component_id=surface.component_id[sort_idx] if surface.component_id is not None else None,
+                    source=surface.source,
+                )
 
             comparison.results.append(
                 SolverResult(

@@ -126,7 +126,7 @@ class SolverConfig(BaseModel):
     )
     
     # Legacy field for backward compatibility
-    type: Optional[Literal["constant_source", "constant_doublet", "linear_source"]] = Field(
+    type: Optional[Literal["constant_source", "constant_doublet", "linear_source", "linear_vortex"]] = Field(
         default=None,
         description="[Deprecated] Use singularity_type, panel_order, panel_geometry instead"
     )
@@ -139,6 +139,7 @@ class SolverConfig(BaseModel):
                 "constant_source": ("source", "constant", "flat"),
                 "constant_doublet": ("doublet", "constant", "flat"),
                 "linear_source": ("source", "linear", "flat"),
+                "linear_vortex": ("vortex", "linear", "flat"),
             }
             if self.type in type_mapping:
                 s, o, g = type_mapping[self.type]

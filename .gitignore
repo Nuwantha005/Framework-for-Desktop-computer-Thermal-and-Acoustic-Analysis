@@ -8,3 +8,4 @@ opencode.json
 **/of_case/
 /site
 .github
+*.pyc

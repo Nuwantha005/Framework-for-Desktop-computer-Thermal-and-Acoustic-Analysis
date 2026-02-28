@@ -31,6 +31,8 @@ SOLVER_ALIASES: Dict[str, str] = {
     "constant_source": "constant_source",
     "linear": "linear_source",
     "linear_source": "linear_source",
+    "vortex": "linear_vortex",
+    "linear_vortex": "linear_vortex",
 }
 
 

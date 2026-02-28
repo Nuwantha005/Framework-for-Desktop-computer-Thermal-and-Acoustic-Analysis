@@ -11,7 +11,7 @@ Usage:
     # Panel method solvers only
     python demos/demo_solver_comparison.py cases/rounded_square
     python demos/demo_solver_comparison.py cases/cylinder_flow --show
-    python demos/demo_solver_comparison.py cases/rounded_square --solvers constant linear --mesh-level 3
+    python demos/demo_solver_comparison.py cases/rounded_square --solvers constant linear vortex --mesh-level 3
 
     # With OpenFOAM reference
     python demos/demo_solver_comparison.py cases/rounded_square --of-case of_case/cases/level_4
@@ -23,6 +23,7 @@ Usage:
 Available solver short names:
     constant   — constant-strength source panels
     linear     — linear-strength source panels
+    vortex     — linear-strength vortex panels
 """
 
 import sys
@@ -53,8 +54,8 @@ def main():
     parser.add_argument(
         "--solvers",
         nargs="+",
-        default=["constant", "linear"],
-        help="Solver types to compare (default: constant linear)",
+        default=["constant", "linear", "vortex"],
+        help="Solver types to compare (default: constant linear vortex)",
     )
     parser.add_argument(
         "--labels",

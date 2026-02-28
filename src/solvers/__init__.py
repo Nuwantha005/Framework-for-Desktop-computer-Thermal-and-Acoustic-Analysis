@@ -2,13 +2,14 @@
 
 from .panel2d.spm import SourcePanelSolver
 from .panel2d.linear_source_solver import LinearSourcePanelSolver
+from .panel2d.linear_vortex_solver import LinearVortexPanelSolver
 from .factory import SolverFactory
 from .base import Solver
 
 # Register available solvers
 SolverFactory.register("source", "constant", "flat", SourcePanelSolver)
 SolverFactory.register("source", "linear", "flat", LinearSourcePanelSolver)
-
+SolverFactory.register("vortex", "linear", "flat", LinearVortexPanelSolver)
 
 def __getattr__(name):
     """Lazy import for comparison module (avoids circular import at init time)."""
@@ -30,6 +31,7 @@ def __getattr__(name):
 __all__ = [
     "SourcePanelSolver",
     "LinearSourcePanelSolver",
+    "LinearVortexPanelSolver",
     "SolverFactory",
     "Solver",
     "SolverComparisonRunner",

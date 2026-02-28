@@ -22,6 +22,13 @@ Each decision gets its own section with date, context, and rationale.
 **Consequences**: New solver `LinearVortexPanelSolver` registered as `("vortex", "linear", "flat")`. Vortex strength at nodes directly equals local tangential velocity, eliminating need for noisy potential differentiation. Comparison alias `"vortex"` added to `SolverComparisonRunner`.
 **Validation**: Rounded square at 256 panels vs OpenFOAM: Vt relative RMS = 3.78%, comparable to linear source (3.71%). Both are ~13× better than constant source (50.7%).
 
+### 2026-02-28 — Dirichlet doublet (Morino) solver for bluff bodies
+**Context**: Need a Dirichlet (internal-potential) formulation as a fourth solver variant. The Morino method (K&P §11.3.1) combines prescribed source strengths with unknown doublet strengths, using $\phi_{\text{int}} = 0$ as the boundary condition. Standard Morino formulation requires wake panels for lifting bodies, which is incompatible with non-lifting bluff bodies.
+**Decision**: Implement constant-strength doublet panels with prescribed constant-strength sources (σ = n̂·V∞). Cure the rank-1 null space (uniform doublet) by pinning μ₁ = 0 per component instead of wake panels. Surface velocity via dμ/ds + V∞·t̂ (K&P Eq. 11.76). Factory key: `("source_doublet", "constant", "flat")`.
+**Alternatives considered**: (1) Doublet-only without sources — less robust, requires different BCs. (2) Linear-strength doublet panels — more accurate but significantly more complex influence integrals for a constant-order formulation. (3) Using the existing `("doublet", "constant", "flat")` key from type_mapping — would conflict with a future pure-doublet solver.
+**Consequences**: New solver `DirichletDoubletSolver` registered as `("source_doublet", "constant", "flat")`. Legacy type string `"source_doublet"` added to `SolverConfig`. Comparison alias `"doublet"` maps to `"source_doublet"`.
+**Validation**: Rounded square at 256 panels vs OpenFOAM: Vt relative RMS = 50.87%, comparable to constant source (50.74%). Expected for constant-order elements — dμ/ds central differences have same resolution as constant source dφ/ds.
+
 <!-- Example:
 ### 2026-02-27 — Continuous vs discontinuous linear-strength formulation
 **Context**: Implementing linear-strength source panels; two formulations exist.

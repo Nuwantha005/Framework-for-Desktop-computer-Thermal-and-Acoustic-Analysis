@@ -1,5 +1,5 @@
 # Solver Module State
-**Last modified**: 2026-02-28
+**Last modified**: 2026-03-01 (linear source/doublet solver)
 
 ## Files
 - `solvers/base.py` — `Solver` ABC: `solve()`, `surface_velocity`, `velocity_at(points)`, `is_solved`, `mesh`
@@ -9,14 +9,29 @@
 - `solvers/panel2d/spm.py` — `SourcePanelSolver(PanelSolver2D)`: constant-strength source panels, Katz & Plotkin formulation; properties: `sigma`, `Vt`, `Cp`
 - `solvers/panel2d/linear_source_solver.py` — `LinearSourcePanelSolver(PanelSolver2D)`: linear-strength source panels; properties: `sigma`, `Vt`, `Cp`
 - `solvers/panel2d/linear_vortex_solver.py` — `LinearVortexPanelSolver(PanelSolver2D)`: linear-strength vortex panels with zero-circulation closure; properties: `gamma`, `Vt`, `Cp`
+- `solvers/panel2d/dirichlet_doublet_solver.py` — `DirichletDoubletSolver(PanelSolver2D)`: Morino source+doublet, Dirichlet internal-potential BC, μ₁=0 gauge fix; properties: `mu`, `sigma`, `Vt`, `Cp`
+- `solvers/panel2d/linear_source_doublet_solver.py` — `LinearSourceDoubletSolver(PanelSolver2D)`: linear-strength doublet + linear-strength source, Dirichlet internal-potential BC (Morino), lstsq with gauge fix for rank-deficient symmetric meshes; surface Vt via dμ/ds central differences on node-averaged μ; properties: `mu`, `sigma`, `Vt`, `Cp`
 - `solvers/panel2d/influences/source.py` — `compute_source_influence_matrices(mesh) → (I, J)`; `compute_source_velocity_influence(point, ...) → (Mx, My)`; `compute_source_potential_influence(point, ...) → coeff`
 - `solvers/panel2d/influences/linear_source.py` — `compute_linear_source_influence_matrices(mesh) → (I, J)`; `compute_linear_source_velocity_field(points, mesh, strengths)`
 - `solvers/panel2d/influences/linear_vortex.py` — `compute_linear_vortex_influence_matrices(mesh) → (I, J)`; `compute_linear_vortex_velocity_influence(point, ...) → ((Mx_a, My_a), (Mx_b, My_b))`; `compute_linear_vortex_velocity_field(points, mesh, gamma)`
+- `solvers/panel2d/influences/doublet.py` — `compute_doublet_potential_influence(point, start, end) → coeff`; `compute_doublet_influence_matrix(mesh) → C`; `compute_source_potential_matrix(mesh) → B`; `compute_doublet_velocity_influence(point, start, end) → (u, w)`
+- `solvers/panel2d/influences/linear_doublet.py` — `compute_linear_doublet_potential_influence(point, start, end) → (Φ_a, Φ_b)` (K&P Eqs. 11.114/11.115); `compute_linear_source_potential_influence(point, start, end) → (B_a, B_b)`; `compute_linear_doublet_influence_matrix(mesh) → C` (N,N node-accumulation); `compute_linear_source_potential_matrix(mesh) → B` (N,N); `compute_linear_doublet_velocity_influence(point, start, end) → ((u_a,w_a),(u_b,w_b))`; `compute_linear_doublet_velocity_field(points, mesh, mu) → (M,2)`
+- `solvers/boundary_layer/__init__.py` — package exports for BL solver
+- `solvers/boundary_layer/base.py` — `BoundaryLayerSolver` (Von Kármán integral ODE solver), `BoundaryLayerResult` (dataclass container for θ, δ*, cf, H, Re_θ)
+- `solvers/boundary_layer/transition.py` — `michel_criterion()`, `en_criterion()`, `TransitionResult` (frozen dataclass)
+- `solvers/boundary_layer/profiles/base.py` — `VelocityProfile` ABC (`compute_closure()`, `initial_theta()`, `name`), `ProfileClosureData` (H, cf_2, optional ratios)
+- `solvers/boundary_layer/profiles/blasius.py` — `BlasiusProfile`: flat-plate, H=2.591, cf/2=0.2205/Re_θ
+- `solvers/boundary_layer/profiles/pohlhausen.py` — `PohlhausenProfile`: 4th-order polynomial, Λ parameter, −12≤Λ≤12
+- `solvers/boundary_layer/profiles/falkner_skan.py` — `FalknerSkanProfile`: wedge-flow similarity, tabulated H(β) and S(β)/Re_θ
+- `solvers/boundary_layer/profiles/power_law.py` — `PowerLawProfile(n=7)`: turbulent 1/n-th law, H=(n+2)/n
+- `solvers/boundary_layer/profiles/thwaites.py` — `ThwaitesProfile`: one-param laminar correlation, `quadrature_theta()` utility
 
 ## Public API
 - `SourcePanelSolver(mesh, v_inf=1.0, aoa=0.0)` → `.solve()` → `.Cp`, `.Vt`, `.sigma`, `.surface_velocity`, `.velocity_at(points)`
 - `LinearSourcePanelSolver(mesh, v_inf=1.0, aoa=0.0)` → `.solve()` → `.Cp`, `.Vt`, `.sigma`, `.surface_velocity`, `.velocity_at(points)`
 - `LinearVortexPanelSolver(mesh, v_inf=1.0, aoa=0.0)` → `.solve()` → `.Cp`, `.Vt`, `.gamma`, `.surface_velocity`, `.velocity_at(points)`
+- `DirichletDoubletSolver(mesh, v_inf=1.0, aoa=0.0)` → `.solve()` → `.Cp`, `.Vt`, `.mu`, `.sigma`, `.surface_velocity`, `.velocity_at(points)`
+- `LinearSourceDoubletSolver(mesh, v_inf=1.0, aoa=0.0)` → `.solve()` → `.Cp`, `.Vt`, `.mu`, `.sigma`, `.surface_velocity`, `.velocity_at(points)`
 - `SolverFactory.create(config, mesh, v_inf, aoa) -> PanelSolver2D`
 - `Case.create_solver(solver_type=None)` — accepts optional `solver_type` override (e.g. `"linear_source"`)
 - `SolverComparisonRunner(case).run(["constant", "linear"], of_case_dir=...) -> ComparisonResult`
@@ -25,6 +40,12 @@
 - `ComparisonResult.reference` — returns the OF `SolverResult` if present
 - `ComparisonResult.solver_results` — returns only panel-method results
 - `extract_openfoam_reference(case, of_case_dir)` → `SolverResult(is_reference=True)` with OF surface data
+- `BoundaryLayerSolver(edge_velocity, arc_length, nu, profile)` → `.solve()` → `BoundaryLayerResult`
+- `BoundaryLayerResult`: dataclass with `.s`, `.theta`, `.delta_star`, `.cf`, `.H`, `.Re_theta`, `.Ue`, `.transition_s`, `.profile_name`, `.converged`
+- `VelocityProfile` ABC → `compute_closure(Re_theta, lambda_param) → ProfileClosureData`, `initial_theta(nu, Ue0) → float`
+- Profiles: `BlasiusProfile()`, `ThwaitesProfile()`, `PohlhausenProfile()`, `FalknerSkanProfile()`, `PowerLawProfile(n=7)`
+- Transition: `michel_criterion(s, Ue, theta, nu) → TransitionResult`, `en_criterion(s, Ue, theta, nu, n_crit=9) → TransitionResult`
+- `ThwaitesProfile.quadrature_theta(s, Ue, nu)` — direct θ(s) via Thwaites' closed-form integral
 
 ## Solver Comparison Workflow
 ```
@@ -41,24 +62,32 @@ Case → SolverComparisonRunner.run(["constant", "linear"], of_case_dir=...)
 
 ## Dependencies
 - Internal: `core.geometry.mesh.Mesh`, `core.io.case.Case`, `postprocessing.surface.SurfaceDataExtractor`
-- External: numpy, scipy.linalg (symmetry check), scipy.interpolate (for OF comparison)
+- External: numpy, scipy.linalg (symmetry check), scipy.interpolate (for OF comparison, BL solver), scipy.integrate (BL ODE)
 
 ## Registered Solvers
 - `("source", "constant", "flat")` → `SourcePanelSolver`
 - `("source", "linear", "flat")` → `LinearSourcePanelSolver`
 - `("vortex", "linear", "flat")` → `LinearVortexPanelSolver`
+- `("source_doublet", "constant", "flat")` → `DirichletDoubletSolver`
+- `("source_doublet", "linear", "flat")` → `LinearSourceDoubletSolver`
 
 ## Solver Aliases (comparison framework)
 - `"constant"` → `"constant_source"`
 - `"linear"` → `"linear_source"`
 - `"vortex"` → `"linear_vortex"`
+- `"doublet"` → `"source_doublet"`
+- `"linear_doublet"` → `"linear_source_doublet"`
 
 ## What's Next
 - Quadratic strength panels
 - Curved panel geometry
-- Viscous boundary layer solver (Von Kármán integral) consuming Vt from linear vortex solver
+- Viscous-inviscid coupling: feed BL δ* back as transpiration velocity to panel method
+- Thermal BL solver (BDIM) consuming Ue(s) and BL result
+- Validate BL solver against OpenFOAM wallShearStress on existing cases
 
 ## Known Issues
 - Debug `print()` + `scipy.linalg.issymmetric` calls left in `compute_source_influence_matrices()`
 - Double `@property sigma` definition in spm.py (lines 48 and 215)
 - Inner loops in `_velocity_at_points()` and influence computation — not yet vectorized
+- BL Falkner-Skan S(β) table values for β > 0.5 are approximate (derived from correlations)
+- BL e^N transition model uses simplified growth rate — adequate for engineering estimates

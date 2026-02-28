@@ -126,7 +126,7 @@ class SolverConfig(BaseModel):
     )
     
     # Legacy field for backward compatibility
-    type: Optional[Literal["constant_source", "constant_doublet", "linear_source", "linear_vortex"]] = Field(
+    type: Optional[Literal["constant_source", "constant_doublet", "linear_source", "linear_vortex", "source_doublet", "linear_source_doublet"]] = Field(
         default=None,
         description="[Deprecated] Use singularity_type, panel_order, panel_geometry instead"
     )
@@ -140,12 +140,49 @@ class SolverConfig(BaseModel):
                 "constant_doublet": ("doublet", "constant", "flat"),
                 "linear_source": ("source", "linear", "flat"),
                 "linear_vortex": ("vortex", "linear", "flat"),
+                "source_doublet": ("source_doublet", "constant", "flat"),
+                "linear_source_doublet": ("source_doublet", "linear", "flat"),
             }
             if self.type in type_mapping:
                 s, o, g = type_mapping[self.type]
                 object.__setattr__(self, 'singularity_type', s)
                 object.__setattr__(self, 'panel_order', o)
                 object.__setattr__(self, 'panel_geometry', g)
+
+
+class BoundaryLayerConfig(BaseModel):
+    """Boundary layer solver configuration (optional section in case.yaml)."""
+    enabled: bool = Field(
+        default=False,
+        description="Enable boundary layer computation"
+    )
+    profiles: List[Literal[
+        "blasius", "pohlhausen", "falkner_skan",
+        "power_law", "thwaites"
+    ]] = Field(
+        default=["thwaites"],
+        description="Velocity profile(s) to run. Use multiple to compare."
+    )
+    power_law_n: int = Field(
+        default=7,
+        ge=3,
+        le=20,
+        description="Exponent for power-law profile (1/n law)"
+    )
+    transition_model: Optional[Literal["michel", "en"]] = Field(
+        default=None,
+        description="Transition prediction model (None = skip)"
+    )
+    n_crit: float = Field(
+        default=9.0,
+        gt=0,
+        description="Critical amplification factor for e^N method"
+    )
+    envelope_scale: float = Field(
+        default=0.15,
+        gt=0,
+        description="Scale factor for cf envelope plots"
+    )
 
 
 class OutputConfig(BaseModel):
@@ -292,6 +329,11 @@ class SimulationConfig(BaseModel):
     visualization: VisualizationConfig = Field(
         default_factory=VisualizationConfig,
         description="Visualization settings"
+    )
+    
+    boundary_layer: BoundaryLayerConfig = Field(
+        default_factory=BoundaryLayerConfig,
+        description="Boundary layer solver settings (optional)"
     )
     
     class Config:

@@ -9,7 +9,9 @@ Solver (ABC)                     # Interface: solve(), velocity_at(), surface_ve
 └── PanelSolver2D (ABC)          # Template method: solve() orchestrates 4 abstract steps
     ├── SourcePanelSolver        # Constant-strength source panels (Katz & Plotkin)
     ├── LinearSourcePanelSolver  # Linear-strength source panels (continuous nodes)
-    └── LinearVortexPanelSolver  # Linear-strength vortex panels (zero-circulation closure)
+    ├── LinearVortexPanelSolver  # Linear-strength vortex panels (zero-circulation closure)
+    ├── DirichletDoubletSolver   # Morino source+doublet, Dirichlet internal-potential BC
+    └── LinearSourceDoubletSolver # Linear source+doublet, Dirichlet BC (K&P §11.5.1)
 ```
 
 ### Solver ABC
@@ -80,7 +82,9 @@ from solvers import SolverFactory
 print(SolverFactory.available())
 # {('source', 'constant', 'flat'): 'SourcePanelSolver',
 #  ('source', 'linear', 'flat'): 'LinearSourcePanelSolver',
-#  ('vortex', 'linear', 'flat'): 'LinearVortexPanelSolver'}
+#  ('vortex', 'linear', 'flat'): 'LinearVortexPanelSolver',
+#  ('source_doublet', 'constant', 'flat'): 'DirichletDoubletSolver',
+#  ('source_doublet', 'linear', 'flat'): 'LinearSourceDoubletSolver'}
 
 # Create from config (used by Case.create_solver())
 solver = SolverFactory.create_panel_solver(
@@ -109,6 +113,20 @@ The `influences/` subpackage computes geometric integrals analytically for each 
 - `compute_linear_vortex_velocity_influence(point, ...)` → `((Mx_a, My_a), (Mx_b, My_b))`
 - `compute_linear_vortex_velocity_field(points, mesh, gamma)` → `(M, 2)` velocity vectors
 
+### Doublet influences (`influences/doublet.py`)
+- `compute_doublet_potential_influence(point, panel_start, panel_end)` → potential coefficient
+- `compute_doublet_influence_matrix(mesh)` → `(N, N)` doublet potential matrix $C$
+- `compute_source_potential_matrix(mesh)` → `(N, N)` source potential matrix $B$
+- `compute_doublet_velocity_influence(point, panel_start, panel_end)` → `(u, w)` velocity coefficients
+
+### Linear doublet influences (`influences/linear_doublet.py`)
+- `compute_linear_doublet_potential_influence(point, start, end)` → `(Φ_a, Φ_b)` — K&P Eqs. 11.114/11.115
+- `compute_linear_source_potential_influence(point, start, end)` → `(B_a, B_b)` — full integration with $-2S$ constant
+- `compute_linear_doublet_influence_matrix(mesh)` → `(N, N)` node-accumulation doublet potential matrix $C$
+- `compute_linear_source_potential_matrix(mesh)` → `(N, N)` node-accumulation source potential matrix $B$
+- `compute_linear_doublet_velocity_influence(point, start, end)` → `((u_a, w_a), (u_b, w_b))` off-body velocity
+- `compute_linear_doublet_velocity_field(points, mesh, mu)` → `(M, 2)` batch off-body velocity field
+
 The vortex influences are derived from the source influences via the rotation identity $u_{\text{vortex}} = w_{\text{source}}$, $w_{\text{vortex}} = -u_{\text{source}}$.
 
 ## Planned Extensions
@@ -118,6 +136,8 @@ The vortex influences are derived from the source influences via the rotation id
 | Constant source | Source, constant strength, flat | ✅ Implemented |
 | Linear source | Source, linear strength, flat | ✅ Implemented |
 | Linear vortex | Vortex, linear strength, flat | ✅ Implemented |
+| Dirichlet doublet | Source+doublet, constant strength, flat | ✅ Implemented |
+| Linear source/doublet | Source+doublet, linear strength, flat (K&P §11.5.1) | ✅ Implemented |
 | Quadratic source | Source, quadratic strength, flat | 🔲 Planned |
 | Source + vortex | Combined with Kutta condition | 🔲 Planned |
 
@@ -132,6 +152,10 @@ The vortex influences are derived from the source influences via the rotation id
 | `panel2d/spm.py` | `SourcePanelSolver` implementation |
 | `panel2d/linear_source_solver.py` | `LinearSourcePanelSolver` implementation |
 | `panel2d/linear_vortex_solver.py` | `LinearVortexPanelSolver` implementation |
+| `panel2d/dirichlet_doublet_solver.py` | `DirichletDoubletSolver` implementation (Morino) |
+| `panel2d/linear_source_doublet_solver.py` | `LinearSourceDoubletSolver` implementation (linear Morino, K&P §11.5.1) |
 | `panel2d/influences/source.py` | Constant source influence coefficient functions |
 | `panel2d/influences/linear_source.py` | Linear source influence coefficient functions |
 | `panel2d/influences/linear_vortex.py` | Linear vortex influence coefficient functions |
+| `panel2d/influences/doublet.py` | Constant doublet potential & velocity influence functions |
+| `panel2d/influences/linear_doublet.py` | Linear doublet + source potential & velocity influence functions |

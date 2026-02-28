@@ -10,6 +10,7 @@ Load any case and run solver validation to check:
 Usage:
     python demos/demo_validation.py cases/cylinder_flow
     python demos/demo_validation.py cases/rounded_square --show-plots
+    python demos/demo_validation.py cases/rounded_square --solver-type linear_source --show-plots
 """
 
 import sys
@@ -26,6 +27,18 @@ def main():
     parser.add_argument("case_dir", type=Path, help="Path to case directory")
     parser.add_argument("--show-plots", action="store_true", help="Display plots interactively")
     parser.add_argument("--output-dir", type=Path, help="Custom output directory")
+    parser.add_argument(
+        "--solver-type",
+        type=str,
+        default=None,
+        help="Solver type override (e.g. constant_source, linear_source)",
+    )
+    parser.add_argument(
+        "--mesh-level",
+        type=int,
+        default=-1,
+        help="Mesh level index (default: 0)",
+    )
     
     args = parser.parse_args()
     
@@ -39,11 +52,11 @@ def main():
     
     try:
         # Load case
-        case = CaseLoader.load_case(case_dir,mesh_level_index=0)
+        case = CaseLoader.load_case(case_dir, mesh_level_index=args.mesh_level)
         print(f"✓ Case loaded: {case.name}")
         
         # Create and solve
-        solver = case.create_solver()
+        solver = case.create_solver(solver_type=args.solver_type)
         print(f"✓ Created solver: {solver.__class__.__name__}")
         
         print("Solving...")

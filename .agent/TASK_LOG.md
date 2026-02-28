@@ -69,3 +69,43 @@
   - `.agent/decisions/README.md` — record zero-circulation closure decision
   - `.agent/TASK_LOG.md` — this entry
 - **Status**: Complete
+
+### Implement Dirichlet Doublet (Morino) Solver
+- **What was done**: Implemented constant-strength Dirichlet doublet panel method (Morino source+doublet formulation) adapted for non-lifting bluff bodies. Sources prescribed (σ = n̂·V∞), doublets solved from Dirichlet internal-potential BC (C·μ = −B·σ). Null space cured by pinning μ₁=0 per component. Surface velocity via dμ/ds + V∞·t̂. Validated against OpenFOAM on rounded_square (50.87% Vt rel RMS — expected for constant-order elements, matches constant source at 50.74%).
+- **Files created**:
+  - `src/solvers/panel2d/influences/doublet.py` — doublet potential & velocity influence functions
+  - `src/solvers/panel2d/dirichlet_doublet_solver.py` — solver class with Morino formulation
+  - `docs/theory/dirichlet_doublet_panels.md` — full theory documentation
+- **Files modified**:
+  - `src/solvers/__init__.py` — register `("source_doublet", "constant", "flat")`
+  - `src/solvers/panel2d/__init__.py` — export `DirichletDoubletSolver`
+  - `src/solvers/panel2d/influences/__init__.py` — export doublet functions
+  - `src/solvers/comparison.py` — add `"doublet"` / `"source_doublet"` aliases
+  - `src/core/config/schemas.py` — add `"source_doublet"` to legacy type Literal + type_mapping
+  - `mkdocs.yml` — add Dirichlet Doublet Panels to nav
+  - `docs/theory/panel_methods_overview.md` — add link to doublet page
+  - `docs/modules/solver.md` — update architecture, factory, influences, file layout, planned table
+  - `.agent/modules/solver.md` — add doublet solver to registered solvers, files, API, aliases
+  - `.agent/PROJECT_CONTEXT.md` — mark doublet done, update focus, module map, source structure
+  - `.agent/decisions/README.md` — record Morino bluff-body adaptation decision
+  - `.agent/TASK_LOG.md` — this entry
+- **Status**: Complete
+
+## 2026-03-01
+### Implement Linear Source/Doublet Solver (Dirichlet, K&P §11.5.1)
+- **What was done**: Implemented linear-strength doublet + linear-strength source panel method (Morino/Dirichlet internal-potential BC) following Katz & Plotkin §11.5.1. Node-based unknowns (μ at N nodes on closed bodies). Source strengths σ prescribed from averaged panel normals. Surface velocity via dμ/ds central differences on node-interpolated μ plus V∞·t̂. Uses lstsq with gauge fix for robustness on symmetric meshes with rank deficiency > 1. Validated on rounded_square: 50.83% Vt error vs OpenFOAM — matches constant-order Dirichlet methods (50.87% for constant doublet) as expected since dμ/ds extraction is constant-order for velocity.
+- **Files created**:
+  - `src/solvers/panel2d/influences/linear_doublet.py` — 6 functions: linear doublet/source potential influences (K&P 11.114/11.115), node-accumulation influence matrices, velocity influences, batch velocity field
+  - `src/solvers/panel2d/linear_source_doublet_solver.py` — `LinearSourceDoubletSolver(PanelSolver2D)`
+- **Files modified**:
+  - `src/solvers/__init__.py` — register `("source_doublet", "linear", "flat")`
+  - `src/solvers/panel2d/__init__.py` — export `LinearSourceDoubletSolver`
+  - `src/solvers/panel2d/influences/__init__.py` — export linear_doublet functions
+  - `src/solvers/comparison.py` — add `"linear_doublet"` / `"linear_source_doublet"` aliases
+  - `src/core/config/schemas.py` — add `"linear_source_doublet"` to legacy type Literal + type_mapping
+- **Documentation updated**:
+  - `.agent/modules/solver.md` — added solver file, influence module, API, factory key, alias
+  - `.agent/PROJECT_CONTEXT.md` — added solver to checklist, module map, source tree; updated focus
+  - `docs/modules/solver.md` — added architecture entry, factory listing, influence docs, file layout, planned table
+  - `.agent/TASK_LOG.md` — this entry
+- **Status**: Complete

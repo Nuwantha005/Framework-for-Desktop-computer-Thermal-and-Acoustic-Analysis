@@ -31,6 +31,20 @@ solver:
   type: "constant_source"
   tolerance: 1.0e-10
 
+fluid:
+  density: 1.225
+  viscosity: 1.81e-5 # air at STP [Pa·s]
+
+boundary_layer:
+  enabled: true
+  profiles:
+    - blasius
+    - thwaites
+    - falkner_skan
+    - pohlhausen
+  transition_model: "michel"
+  envelope_scale: 0.15
+
 visualization:
   domain:
     x_range: [-2.0, 2.0]

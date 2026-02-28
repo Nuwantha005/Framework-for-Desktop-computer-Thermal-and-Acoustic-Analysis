@@ -169,6 +169,9 @@ class LinearSourcePanelSolver(PanelSolver2D):
         print(f"  Mean σ:    {sigma_mean:.6f}")
         print(f"  Std σ:     {sigma_std:.6f}")
         
+        # Plot linear σ distribution using surface envelope
+        self._plot_source_distribution(validation_dir, show_plots)
+        
         return {
             "sum_sigma": sigma_sum,
             "max_sigma": sigma_max,
@@ -176,3 +179,62 @@ class LinearSourcePanelSolver(PanelSolver2D):
             "mean_sigma": sigma_mean,
             "std_sigma": sigma_std
         }
+
+    def _plot_source_distribution(
+        self,
+        validation_dir,
+        show_plots: bool,
+        n_subdivisions: int = 5,
+    ):
+        """
+        Plot linear source strength distribution as a surface envelope.
+
+        Each panel is sub-sampled into *n_subdivisions* segments so the
+        piece-wise linear variation of σ between endpoint nodes is visible.
+        """
+        from pathlib import Path
+        from visualization.surface_envelope import plot_surface_envelope
+        import matplotlib.pyplot as plt
+
+        nodes = self._mesh.nodes[:, :2]          # (N_nodes, 2)
+        panels = self._mesh.panels                # (N_panels, 2)
+        sigma = self._sigma                       # (N_nodes,)
+
+        # Build dense points along the body with linearly-interpolated σ
+        xs, ys, sigmas = [], [], []
+        for panel_idx in range(len(panels)):
+            n_a, n_b = panels[panel_idx]
+            p_a, p_b = nodes[n_a], nodes[n_b]
+            s_a, s_b = sigma[n_a], sigma[n_b]
+
+            # Parametric sub-samples: t = 0 .. 1 (exclude t=1 to avoid
+            # duplicating the shared node with the next panel)
+            t = np.linspace(0.0, 1.0, n_subdivisions, endpoint=False)
+            xs.append(p_a[0] + t * (p_b[0] - p_a[0]))
+            ys.append(p_a[1] + t * (p_b[1] - p_a[1]))
+            sigmas.append(s_a + t * (s_b - s_a))
+
+        x = np.concatenate(xs)
+        y = np.concatenate(ys)
+        values = np.concatenate(sigmas)
+
+        fig, ax = plot_surface_envelope(
+            x, y, values,
+            scale=0.3,
+            quantity_name="σ (source strength)",
+            colormap="RdBu_r",
+            title=(
+                f"Linear Source Strength Distribution "
+                f"(N={self._mesh.num_panels} panels)"
+            ),
+            show_colorbar=True,
+        )
+
+        output_file = Path(validation_dir) / "source_strength_distribution.png"
+        fig.savefig(output_file, dpi=150, bbox_inches="tight")
+        print(f"  Source distribution plot saved: {output_file}")
+
+        if show_plots:
+            plt.show()
+        else:
+            plt.close(fig)

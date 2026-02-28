@@ -18,12 +18,15 @@ This reduces the problem from a 2D/3D field solve to a system of linear equation
 
 ## Current Limitations
 
-- **Source and vortex panels**: Source panels for non-lifting bodies; linear vortex panels with zero-circulation closure for direct $V_t$ extraction. No lift generation.
+- **Source, vortex, and doublet panels**: Source panels for non-lifting bodies; linear vortex panels with zero-circulation closure for direct $V_t$ extraction; Dirichlet doublet (Morino) for combined source+doublet formulation with both constant and linear variants. No lift generation.
 - **Inviscid**: No boundary layer, no separation, no wake.
 - **2D only**: 3D panel methods planned for future phases.
 
+## Implemented Methods
 
-- [Constant-Strength Source Panels](constant_source_panels.md)
-- [Linear-Strength Source Panels](linear_source_panels.md)
-- [Linear-Strength Vortex Panels](linear_vortex_panels.md)
+- [Constant-Strength Source Panels](constant_source_panels.md) — Neumann BC, constant $\sigma$ per panel
+- [Linear-Strength Source Panels](linear_source_panels.md) — Neumann BC, linear $\sigma$ at nodes
+- [Linear-Strength Vortex Panels](linear_vortex_panels.md) — Neumann BC, linear $\gamma$ with zero-circulation closure
+- [Dirichlet Doublet Panels (Morino)](dirichlet_doublet_panels.md) — Dirichlet BC, constant $\mu$ + $\sigma$
+- [Linear Source/Doublet Panels](linear_source_doublet_panels.md) — Dirichlet BC, linear $\mu$ + $\sigma$ (K&P §11.5.1)
 

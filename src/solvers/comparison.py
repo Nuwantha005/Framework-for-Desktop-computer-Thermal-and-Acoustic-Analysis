@@ -33,6 +33,10 @@ SOLVER_ALIASES: Dict[str, str] = {
     "linear_source": "linear_source",
     "vortex": "linear_vortex",
     "linear_vortex": "linear_vortex",
+    "doublet": "source_doublet",
+    "source_doublet": "source_doublet",
+    "linear_doublet": "linear_source_doublet",
+    "linear_source_doublet": "linear_source_doublet",
 }
 
 

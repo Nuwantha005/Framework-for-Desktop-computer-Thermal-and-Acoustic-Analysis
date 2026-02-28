@@ -8,7 +8,7 @@ piece needed to calculate heat transfer rates from computer components.
 
 ## Reference Materials
 - **Research paper (PDF → markdown)**: `notes_archived/bl_solvers/gao2013.pdf`
-  - Convert to markdown using `marker-pdf` and place in same folder before starting
+  - Converted to markdown using `marker-pdf` and placed in same folder : `notes_archived/bl_solvers/gao2013/gao2013.md`
   - Key sections: BDIM formulation, fundamental solution, discretization, validation cases
 - **Coupled solver design**: `notes_archived/solver_implementation/06_coupled_solvers.md`
   - "Thermal Solvers" section: Reynolds analogy approach as baseline

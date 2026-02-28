@@ -27,7 +27,10 @@ nav:
       - Constant Source Panels: theory/constant_source_panels.md
       - Linear Source Panels: theory/linear_source_panels.md
       - Linear Vortex Panels: theory/linear_vortex_panels.md
+      - Dirichlet Doublet Panels: theory/dirichlet_doublet_panels.md
+      - Linear Source/Doublet Panels: theory/linear_source_doublet_panels.md
       - Boundary Layers: theory/boundary_layers.md
+      - Thermal Boundary Layer: theory/thermal_boundary_layer.md
   - Modules:
       - Geometry: modules/geometry.md
       - Solver: modules/solver.md

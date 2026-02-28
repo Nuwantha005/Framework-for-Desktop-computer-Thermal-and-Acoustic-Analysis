@@ -11,6 +11,14 @@ from .surface_envelope import (
     compute_outward_normals,
 )
 from .solver_comparison import SolverComparisonVisualizer
+from .bl_plots import (
+    plot_bl_line,
+    plot_bl_lines_multi,
+    plot_bl_two_sides,
+    plot_bl_envelope,
+    plot_bl_envelope_comparison,
+    plot_bl_comparison,
+)
 
 # Legacy exports (prefer Visualizer for new code)
 from .mesh_plot import MeshPlotter, quick_plot_mesh, quick_plot_component, quick_plot_scene
@@ -34,6 +42,13 @@ __all__ = [
     'compute_outward_normals',
     # Solver comparison
     'SolverComparisonVisualizer',
+    # Boundary layer plots
+    'plot_bl_line',
+    'plot_bl_lines_multi',
+    'plot_bl_two_sides',
+    'plot_bl_envelope',
+    'plot_bl_envelope_comparison',
+    'plot_bl_comparison',
     # Legacy
     'MeshPlotter',
     'quick_plot_mesh',

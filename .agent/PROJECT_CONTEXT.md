@@ -1,17 +1,19 @@
 # Panel Method Solver — Project Context
-**Last updated**: 2026-02-28
-**Updated by**: agent — linear vortex solver implementation
+**Last updated**: 2026-03-01
+**Updated by**: agent — Linear source/doublet solver implementation
 
 ## Current Focus
 > **Phase: Viscous BL solver (Von Kármán integral)**
 >
-> All three 2D panel solvers now implemented (constant source, linear source, linear vortex).
-> Linear vortex solver provides direct $V_t \equiv \gamma$ extraction at ~3.8% error vs OpenFOAM.
-> Next: implement Von Kármán momentum integral BL solver consuming edge velocity from
-> linear vortex panels. Then thermal BL (BDIM from Gao 2013), and 3D panel methods with
-> PyVista visualization. All 2D work completes before 3D porting.
->
-> See `.agent/prompts/` for step-by-step guides for each phase.
+> All five 2D panel solvers now implemented (constant source, linear source,
+> linear vortex, Dirichlet doublet/Morino, linear source/doublet). Linear vortex
+> and linear source provide best accuracy (~3.7–3.8% Vt error vs OpenFOAM).
+> Constant-order Dirichlet methods (constant doublet: 50.87%, linear source/doublet: 50.83%)
+> match each other as expected since dμ/ds extraction is constant-order for velocity.
+> Von Kármán momentum integral BL solver now implemented with multiple velocity
+> profiles (Blasius, Thwaites, Pohlhausen, Falkner-Skan, Power Law) and transition
+> criteria (Michel, e^N). Next: thermal BL (BDIM from Gao 2013), viscous-inviscid
+> coupling, and 3D panel methods with PyVista visualization.
 
 ## What This Project Is
 A 2D panel method solver for potential flow analysis, part of a Final Year Project to develop a framework for desktop computer thermal and acoustic analysis. The solver uses constant-strength source panels with Neumann boundary conditions (no-penetration). An OpenFOAM-based validation pipeline compares panel method results against CFD. Future phases will add vortex panels, boundary layer solvers, and thermal coupling.
@@ -20,6 +22,8 @@ A 2D panel method solver for potential flow analysis, part of a Final Year Proje
 - [x] Constant-strength source panel solver (Katz & Plotkin formulation)
 - [x] Linear-strength source panel solver (continuous node-based formulation)
 - [x] Linear-strength vortex panel solver (zero-circulation closure, direct Vt)
+- [x] Dirichlet doublet panel solver (Morino source+doublet, internal-potential BC)
+- [x] Linear source/doublet panel solver (Morino, linear-strength, K&P §11.5.1)
 - [x] Case file I/O (YAML cases + JSON geometries)
 - [x] Geometry module (parametric circle/rectangle/rounded_rectangle, STL export)
 - [x] OpenFOAM validation pipeline (meshing, grid independence, comparison)
@@ -38,7 +42,8 @@ case.yaml ──► CaseLoader ──► Case ──► Scene ──► Mesh (as
                                 │                    │
                                 ▼                    ▼
                           create_solver()    SourcePanelSolver / LinearSourcePanelSolver
-                                             / LinearVortexPanelSolver
+                                             / LinearVortexPanelSolver / DirichletDoubletSolver
+                                             / LinearSourceDoubletSolver
                                                      │
                                               solve() │
                                                      ▼
@@ -105,10 +110,14 @@ src/
 │       ├── spm.py                       # SourcePanelSolver (constant source)
 │       ├── linear_source_solver.py       # LinearSourcePanelSolver
 │       ├── linear_vortex_solver.py       # LinearVortexPanelSolver
+│       ├── dirichlet_doublet_solver.py   # DirichletDoubletSolver (Morino)
+│       ├── linear_source_doublet_solver.py # LinearSourceDoubletSolver (linear Morino)
 │       └── influences/
 │           ├── source.py                # Constant source influence coefficients
 │           ├── linear_source.py         # Linear source influence coefficients
-│           └── linear_vortex.py         # Linear vortex influence coefficients
+│           ├── linear_vortex.py         # Linear vortex influence coefficients
+│           ├── doublet.py               # Constant doublet potential & velocity influences
+│           └── linear_doublet.py        # Linear doublet + source potential & velocity influences
 ├── postprocessing/
 │   ├── fields.py                        # FieldData, ScalarField, VectorField
 │   ├── fluid.py                         # FluidState, ReferenceCondition
@@ -144,7 +153,7 @@ src/
 - `test_foundation.py` uses print-based assertions, not pytest
 - `spm.py` has debug `print()` statements in `compute_source_influence_matrices`
 - No conftest.py or pytest fixtures
-- Placeholder directories exist for panel3d, thermal, actuator, boundary_layer (empty)
+- Placeholder directories exist for panel3d, thermal, actuator (boundary_layer now populated)
 - `foamlib` and `trimesh` not listed in requirements.txt but imported in validation/
 
 ## Agent Infrastructure

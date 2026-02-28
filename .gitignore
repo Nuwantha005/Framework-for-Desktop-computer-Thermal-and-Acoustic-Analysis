@@ -1,4 +1,4 @@
-/notes
+/notes_archived
 __pycache__/
 **/out
 /validation_results
@@ -6,3 +6,5 @@ AGENTS.md
 .ignore
 opencode.json
 **/of_case/
+/site
+.github

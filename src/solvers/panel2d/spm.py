@@ -1,3 +1,9 @@
+"""
+Constant-strength source panel method solver.
+
+Implements the 2D source panel method following Katz & Plotkin's formulation
+for constant-strength source distributions on flat line segments.
+"""
 
 import numpy as np
 from numpy.typing import NDArray

@@ -54,7 +54,7 @@ def main():
     parser.add_argument(
         "--solvers",
         nargs="+",
-        default=["constant", "linear", "vortex"],
+        default=["constant", "linear", "vortex", "doublet", "linear_doublet"],
         help="Solver types to compare (default: constant linear vortex)",
     )
     parser.add_argument(

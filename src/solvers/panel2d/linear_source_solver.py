@@ -15,6 +15,7 @@ from .influences.linear_source import (
     compute_linear_source_influence_matrices,
     compute_linear_source_velocity_field
 )
+from .influences import compute_linear_source_potential_influence
 
 
 class LinearSourcePanelSolver(PanelSolver2D):
@@ -93,15 +94,19 @@ class LinearSourcePanelSolver(PanelSolver2D):
         
         return {"source": sigma}
     
-    def _compute_surface_velocity(self, influence_matrices: Dict[str, NDArray], strengths: Dict[str, NDArray]) -> NDArray:
+    def _compute_surface_velocity_from_summing_influences(
+        self,
+        influence_matrices: Dict[str, NDArray],
+        strengths: Dict[str, NDArray],
+    ) -> NDArray:
         """
-        Compute tangential surface velocity along panels (at centers).
+        Compute tangential surface velocity along panels (at centers)
+        by directly summing velocity influence coefficients.
         """
         J = influence_matrices["J"]
         sigma = strengths["source"]
         
         v_inf_2d = self.v_inf_vector[:2]
-        tangents = self._mesh.normals.copy()
         # the mesh tangent is (dx/ds, dy/ds)
         # However, to be consistent with how J was built:
         mesh_tangents = self._mesh.tangents[:, :2]
@@ -113,8 +118,20 @@ class LinearSourcePanelSolver(PanelSolver2D):
         # Note: J already contains the true velocity coefficients.
         v_induced_t = J @ sigma
         
-        Vt = v_inf_t + v_induced_t
-        
+        return v_inf_t + v_induced_t
+
+    def _compute_surface_velocity(self, influence_matrices: Dict[str, NDArray], strengths: Dict[str, NDArray]) -> NDArray:
+        """
+        Compute tangential velocity at panel centers.
+
+        Two interchangeable implementations are available:
+        - Potential-gradient method (often smoother near corners)
+        - Direct influence summation method
+        """
+        # Use potential-based approach
+        # Vt = self._compute_surface_velocity_from_potential()
+        Vt = self._compute_surface_velocity_from_summing_influences(influence_matrices, strengths)
+
         return Vt
     
     def _velocity_at_points(self, points: NDArray) -> Tuple[NDArray, NDArray]:
@@ -150,6 +167,76 @@ class LinearSourcePanelSolver(PanelSolver2D):
         Vn = I @ strengths
         
         return Vn
+
+    def _compute_surface_potential(self) -> NDArray[np.float64]:
+        """
+        Compute total velocity potential at each panel center.
+
+        Returns:
+            (N_panels,) array of potential values at panel centers.
+        """
+        n_panels = self._mesh.num_panels
+        centers = self._mesh.centers[:, :2]
+        nodes = self._mesh.nodes[:, :2]
+        panels = self._mesh.panels
+
+        phi_perturbation = np.zeros(n_panels, dtype=np.float64)
+
+        for i in range(n_panels):
+            point = centers[i]
+            for j in range(n_panels):
+                n_a, n_b = panels[j]
+                p_a = nodes[n_a]
+                p_b = nodes[n_b]
+
+                B_a, B_b = compute_linear_source_potential_influence(
+                    point=point,
+                    panel_start=p_a,
+                    panel_end=p_b,
+                )
+                phi_perturbation[i] += self._sigma[n_a] * B_a + self._sigma[n_b] * B_b
+
+        v_inf_2d = self.v_inf_vector[:2]
+        phi_freestream = centers @ v_inf_2d
+
+        return phi_perturbation + phi_freestream
+
+    def _compute_surface_velocity_from_potential(self) -> NDArray[np.float64]:
+        """
+        Compute tangential velocity by differentiating potential along surface.
+
+        Returns:
+            (N_panels,) array of tangential velocities.
+        """
+        phi = self._compute_surface_potential()
+        centers = self._mesh.centers[:, :2]
+        n_panels = len(phi)
+
+        arc_length = np.zeros(n_panels, dtype=np.float64)
+        for i in range(1, n_panels):
+            arc_length[i] = arc_length[i - 1] + np.linalg.norm(centers[i] - centers[i - 1])
+
+        total_arc = arc_length[-1] + np.linalg.norm(centers[0] - centers[-1])
+
+        Vt = np.zeros(n_panels, dtype=np.float64)
+        for i in range(n_panels):
+            i_plus = (i + 1) % n_panels
+            i_minus = (i - 1) % n_panels
+
+            if i == 0:
+                ds_minus = arc_length[0] + (total_arc - arc_length[-1])
+            else:
+                ds_minus = arc_length[i] - arc_length[i_minus]
+
+            if i == n_panels - 1:
+                ds_plus = total_arc - arc_length[i]
+            else:
+                ds_plus = arc_length[i_plus] - arc_length[i]
+
+            ds_total = ds_minus + ds_plus
+            Vt[i] = (phi[i_plus] - phi[i_minus]) / ds_total
+
+        return Vt
     
     def _perform_solver_specific_validation(self, validation_dir, show_plots: bool) -> dict:
         """Linear Source panel validation: node strength distribution statistics."""

@@ -11,9 +11,18 @@ theme:
     - search.suggest
     - navigation.top
   palette:
-    - scheme: default
-      primary: indigo
-      accent: indigo
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7 # Sun icon
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate # Slate provides a dark background
+      toggle:
+        icon: material/brightness-4 # Moon icon
+        name: Switch to light mode
 
 nav:
   - Home: index.md

@@ -69,7 +69,7 @@ Empirical correlation:
 
 $$Re_\theta \geq 1.174\,Re_x^{0.46}$$
 
-### Simplified e^N Method
+### Simplified $e^N$ Method
 
 Single-parameter amplification model. Instability onset at $Re_\theta \approx 150$
 (Tollmien-Schlichting waves). Transition when the amplification factor

@@ -34,6 +34,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+import numpy as np
+from numpy.typing import NDArray
+
 from .base import VelocityProfile, ProfileClosureData
 
 
@@ -112,3 +115,65 @@ class PowerLawProfile(VelocityProfile):
         x0 = 100.0 * nu / Ue0
         Rex0 = Ue0 * x0 / nu
         return 0.036 * x0 / (Rex0 ** 0.2)
+
+    def stagnation_theta(self, nu: float, K: float) -> float:
+        """
+        Power-law profile does not support stagnation patching.
+
+        The power-law is a turbulent closure; laminar stagnation patching
+        is not physically meaningful.  Callers should fall back to
+        ``initial_theta``.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Power-law (turbulent) profile does not support "
+            "laminar stagnation patching."
+        )
+
+    # ------------------------------------------------------------------
+    # Post-processing: velocity field reconstruction
+    # ------------------------------------------------------------------
+
+    def compute_delta(self, theta: float, H: float) -> float:
+        """
+        Power-law boundary layer thickness.
+
+        δ = (n+1)(n+2)/n · θ  (exact from integral ratios).
+
+        Args:
+            theta: Momentum thickness θ [m].
+            H: Shape factor (unused — determined by n).
+
+        Returns:
+            Boundary layer thickness δ [m].
+        """
+        n = self.n
+        return (n + 1) * (n + 2) / n * theta
+
+    def reconstruct_velocity(
+        self,
+        y: NDArray[np.float64],
+        theta: float,
+        H: float,
+        Ue: float,
+    ) -> NDArray[np.float64]:
+        """
+        Reconstruct u(y) from the 1/n power-law profile.
+
+        u(y) = Ue · (y/δ)^(1/n)  for y ≤ δ,  u = Ue for y > δ.
+
+        Args:
+            y: Wall-normal coordinates [m], shape (Ny,).
+            theta: Momentum thickness θ [m].
+            H: Shape factor (unused).
+            Ue: Edge velocity [m/s].
+
+        Returns:
+            Velocity u(y) [m/s], shape (Ny,).
+        """
+        delta = self.compute_delta(theta, H)
+        y_arr = np.asarray(y, dtype=np.float64)
+        eta = np.clip(y_arr / delta, 0.0, 1.0)
+        return Ue * eta ** (1.0 / self.n)

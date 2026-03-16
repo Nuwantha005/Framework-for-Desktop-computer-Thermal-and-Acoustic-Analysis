@@ -1,5 +1,5 @@
 # Solver Module State
-**Last modified**: 2026-03-01 (linear source/doublet solver)
+**Last modified**: 2026-03-16 (BL solver refactorization phases 1–6)
 
 ## Files
 - `solvers/base.py` — `Solver` ABC: `solve()`, `surface_velocity`, `velocity_at(points)`, `is_solved`, `mesh`
@@ -16,15 +16,18 @@
 - `solvers/panel2d/influences/linear_vortex.py` — `compute_linear_vortex_influence_matrices(mesh) → (I, J)`; `compute_linear_vortex_velocity_influence(point, ...) → ((Mx_a, My_a), (Mx_b, My_b))`; `compute_linear_vortex_velocity_field(points, mesh, gamma)`
 - `solvers/panel2d/influences/doublet.py` — `compute_doublet_potential_influence(point, start, end) → coeff`; `compute_doublet_influence_matrix(mesh) → C`; `compute_source_potential_matrix(mesh) → B`; `compute_doublet_velocity_influence(point, start, end) → (u, w)`
 - `solvers/panel2d/influences/linear_doublet.py` — `compute_linear_doublet_potential_influence(point, start, end) → (Φ_a, Φ_b)` (K&P Eqs. 11.114/11.115); `compute_linear_source_potential_influence(point, start, end) → (B_a, B_b)`; `compute_linear_doublet_influence_matrix(mesh) → C` (N,N node-accumulation); `compute_linear_source_potential_matrix(mesh) → B` (N,N); `compute_linear_doublet_velocity_influence(point, start, end) → ((u_a,w_a),(u_b,w_b))`; `compute_linear_doublet_velocity_field(points, mesh, mu) → (M,2)`
-- `solvers/boundary_layer/__init__.py` — package exports for BL solver
-- `solvers/boundary_layer/base.py` — `BoundaryLayerSolver` (Von Kármán integral ODE solver), `BoundaryLayerResult` (dataclass container for θ, δ*, cf, H, Re_θ)
+- `solvers/boundary_layer/__init__.py` — package exports for BL solver and field reconstruction
+- `solvers/boundary_layer/base.py` — `BoundaryLayerSolver` (Von Kármán integral ODE solver), `BoundaryLayerResult` (dataclass container for θ, δ*, cf, H, Re_θ); accepts optional `K` for stagnation patching
+- `solvers/boundary_layer/runner.py` — `BoundaryLayerRunner` (orchestration), `BoundaryLayerPathResult`, `BoundaryLayerCaseResult`; exact stagnation detection via `_interpolate_stagnation()`, velocity gradient `_compute_K()`, optional velocity-field reconstruction
+- `solvers/boundary_layer/field.py` — `BLFieldData` (reconstructed 2-D velocity field), `reconstruct_bl_field()` (batch reconstruction from integral results + profile)
 - `solvers/boundary_layer/transition.py` — `michel_criterion()`, `en_criterion()`, `TransitionResult` (frozen dataclass)
-- `solvers/boundary_layer/profiles/base.py` — `VelocityProfile` ABC (`compute_closure()`, `initial_theta()`, `name`), `ProfileClosureData` (H, cf_2, optional ratios)
-- `solvers/boundary_layer/profiles/blasius.py` — `BlasiusProfile`: flat-plate, H=2.591, cf/2=0.2205/Re_θ
-- `solvers/boundary_layer/profiles/pohlhausen.py` — `PohlhausenProfile`: 4th-order polynomial, Λ parameter, −12≤Λ≤12
-- `solvers/boundary_layer/profiles/falkner_skan.py` — `FalknerSkanProfile`: wedge-flow similarity, tabulated H(β) and S(β)/Re_θ
-- `solvers/boundary_layer/profiles/power_law.py` — `PowerLawProfile(n=7)`: turbulent 1/n-th law, H=(n+2)/n
-- `solvers/boundary_layer/profiles/thwaites.py` — `ThwaitesProfile`: one-param laminar correlation, `quadrature_theta()` utility
+- `solvers/boundary_layer/profiles/base.py` — `VelocityProfile` ABC (`compute_closure()`, `initial_theta()`, `stagnation_theta()`, `compute_delta()`, `reconstruct_velocity()`, `name`), `ProfileClosureData` (H, cf_2, optional ratios)
+- `solvers/boundary_layer/profiles/blasius.py` — `BlasiusProfile`: flat-plate, H=2.591, stagnation_theta via Blasius ODE constant, reconstruction via Blasius table
+- `solvers/boundary_layer/profiles/pohlhausen.py` — `PohlhausenProfile`: 4th-order polynomial, Λ parameter, −12≤Λ≤12, reconstruction via H→Λ inversion
+- `solvers/boundary_layer/profiles/falkner_skan.py` — `FalknerSkanProfile`: wedge-flow similarity, tabulated H(β) and S(β)/Re_θ, reconstruction via H→β inversion + F-S table
+- `solvers/boundary_layer/profiles/power_law.py` — `PowerLawProfile(n=7)`: turbulent 1/n-th law, H=(n+2)/n, reconstruction via algebraic (y/δ)^(1/n)
+- `solvers/boundary_layer/profiles/thwaites.py` — `ThwaitesProfile`: one-param laminar correlation, `quadrature_theta()` utility, configurable reconstruction pairing (falkner_skan or pohlhausen)
+- `solvers/boundary_layer/profiles/tables.py` — `BlasiusTable`, `FalknerSkanTable` (lazy singleton loaders with interpolation and ODE fallback)
 
 ## Public API
 - `SourcePanelSolver(mesh, v_inf=1.0, aoa=0.0)` → `.solve()` → `.Cp`, `.Vt`, `.sigma`, `.surface_velocity`, `.velocity_at(points)`
@@ -40,10 +43,15 @@
 - `ComparisonResult.reference` — returns the OF `SolverResult` if present
 - `ComparisonResult.solver_results` — returns only panel-method results
 - `extract_openfoam_reference(case, of_case_dir)` → `SolverResult(is_reference=True)` with OF surface data
-- `BoundaryLayerSolver(edge_velocity, arc_length, nu, profile)` → `.solve()` → `BoundaryLayerResult`
+- `BoundaryLayerSolver(edge_velocity, arc_length, nu, profile)` → `.solve(K=None)` → `BoundaryLayerResult`
 - `BoundaryLayerResult`: dataclass with `.s`, `.theta`, `.delta_star`, `.cf`, `.H`, `.Re_theta`, `.Ue`, `.transition_s`, `.profile_name`, `.converged`
-- `VelocityProfile` ABC → `compute_closure(Re_theta, lambda_param) → ProfileClosureData`, `initial_theta(nu, Ue0) → float`
-- Profiles: `BlasiusProfile()`, `ThwaitesProfile()`, `PohlhausenProfile()`, `FalknerSkanProfile()`, `PowerLawProfile(n=7)`
+- `BoundaryLayerRunner(case, solver)` → `.run(profiles, reconstruct=False, ...)` → `BoundaryLayerCaseResult`
+- `BoundaryLayerPathResult`: `.results` (profile→result), `.fields` (profile→BLFieldData), `.K`, `.transitions`
+- `BLFieldData`: reconstructed 2-D field (`.s`, `.y`, `.u`, `.delta`, `.Ue`, `.theta`, `.H`, `.profile_name`)
+- `reconstruct_bl_field(result, profile, n_y=80, extend=1.0)` → `BLFieldData`
+- `VelocityProfile` ABC → `compute_closure()`, `initial_theta()`, `stagnation_theta(nu, K)`, `compute_delta(theta, H)`, `reconstruct_velocity(y, theta, H, Ue)`
+- Profiles: `BlasiusProfile()`, `ThwaitesProfile(reconstruction="falkner_skan"|"pohlhausen")`, `PohlhausenProfile()`, `FalknerSkanProfile()`, `PowerLawProfile(n=7)`
+- Tables: `blasius_table()`, `falkner_skan_table()` (module-level singleton accessors)
 - Transition: `michel_criterion(s, Ue, theta, nu) → TransitionResult`, `en_criterion(s, Ue, theta, nu, n_crit=9) → TransitionResult`
 - `ThwaitesProfile.quadrature_theta(s, Ue, nu)` — direct θ(s) via Thwaites' closed-form integral
 

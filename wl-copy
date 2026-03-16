@@ -1,0 +1,81 @@
+Loading case: /run/media/nuwa/Work/FYP/Code/panel-method-solver/cases/cylinder_flow
+  Case: Cylinder Flow, 256 panels
+  Solver: LinearSourcePanelSolver
+  Solving panel method ...
+  Done.
+
+  BL profiles: ['blasius', 'thwaites', 'falkner_skan', 'pohlhausen']
+  Transition model: michel
+  Velocity-field reconstruction: enabled
+  Stagnation: fwd panel 127 (-0.4999, 0.0061), rear panel 255 (0.4999, -0.0061)
+  Upper path: 129 panels, s_max = 0.0123 m, K = 0.20 1/s
+  Lower path: 129 panels, s_max = 0.0000 m, K = 0.13 1/s
+
+  ν = 1.460e-05 m²/s
+
+  === UPPER SIDE (129 panels, s_max = 0.0123 m) ===
+    [Blasius]  1/129 stations valid, converged=True
+      θ:  [1.874e-03, 1.874e-03]
+      cf: [1.402e+00, 1.402e+00]
+      δ*: [4.856e-03, 4.856e-03]
+      H:  [2.59, 2.59]
+      No transition (Michel)
+      Reconstructed field: 1 stations × 80 y-points, δ_max = 1.386e-02 m
+    [Thwaites]  1/129 stations valid, converged=True
+      θ:  [2.341e-03, 2.341e-03]
+      cf: [1.119e+00, 1.119e+00]
+      δ*: [6.111e-03, 6.111e-03]
+      H:  [2.61, 2.61]
+      No transition (Michel)
+      Reconstructed field: 1 stations × 80 y-points, δ_max = 1.730e-02 m
+    [Falkner-Skan]  1/129 stations valid, converged=True
+      θ:  [2.500e-03, 2.500e-03]
+      cf: [1.051e+00, 1.051e+00]
+      δ*: [6.476e-03, 6.476e-03]
+      H:  [2.59, 2.59]
+      No transition (Michel)
+      Reconstructed field: 1 stations × 80 y-points, δ_max = 1.849e-02 m
+    [Pohlhausen]  1/129 stations valid, converged=True
+      θ:  [2.373e-03, 2.373e-03]
+      cf: [1.180e+00, 1.180e+00]
+      δ*: [6.060e-03, 6.060e-03]
+      H:  [2.55, 2.55]
+      No transition (Michel)
+      Reconstructed field: 1 stations × 80 y-points, δ_max = 2.020e-02 m
+
+  === LOWER SIDE (129 panels, s_max = 0.0000 m) ===
+    [Blasius]  102/129 stations valid, converged=True
+      θ:  [1.341e-03, 7.156e-02]
+      cf: [8.590e-04, 1.557e-01]
+      δ*: [3.476e-03, 1.854e-01]
+      H:  [2.59, 2.59]
+      Transition: s = -1.5093 (Michel)
+      Reconstructed field: 102 stations × 80 y-points, δ_max = 5.291e-01 m
+    [Thwaites]  68/129 stations valid, converged=True
+      θ:  [1.881e-03, 3.765e-03]
+      cf: [1.609e-03, 2.253e-01]
+      δ*: [3.956e-03, 1.268e-02]
+      H:  [1.80, 3.37]
+      Transition: s = -1.5093 (Michel)
+      Reconstructed field: 68 stations × 80 y-points, δ_max = 2.864e-02 m
+    [Falkner-Skan]  100/129 stations valid, converged=True
+      θ:  [1.572e-03, 7.183e-02]
+      cf: [0.000e+00, 1.638e-01]
+      δ*: [3.663e-03, 2.507e-01]
+      H:  [1.87, 3.49]
+      Transition: s = -1.5093 (Michel)
+      Reconstructed field: 100 stations × 80 y-points, δ_max = 5.540e-01 m
+    [Pohlhausen]  73/129 stations valid, converged=True
+      θ:  [1.688e-03, 4.403e-03]
+      cf: [0.000e+00, 1.892e-01]
+      δ*: [3.922e-03, 1.541e-02]
+      H:  [2.25, 3.50]
+      Transition: s = -1.5093 (Michel)
+      Reconstructed field: 73 stations × 80 y-points, δ_max = 3.852e-02 m
+
+Saving plots to: /run/media/nuwa/Work/FYP/Code/panel-method-solver/cases/cylinder_flow/out/boundary_layer
+  + bl_lines.png
+  + bl_lines_upper.png, bl_lines_lower.png
+  + bl_cf_envelope.png, bl_delta_star_envelope.png
+  + bl_comparison.png
+  + Individual profile envelopes

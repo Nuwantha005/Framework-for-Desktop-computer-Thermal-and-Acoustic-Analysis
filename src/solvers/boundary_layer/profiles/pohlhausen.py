@@ -25,6 +25,9 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
+from numpy.typing import NDArray
+
 from .base import VelocityProfile, ProfileClosureData
 
 
@@ -114,6 +117,24 @@ class PohlhausenProfile(VelocityProfile):
         s0 = nu / Ue0
         return math.sqrt(0.075 * nu * s0 / Ue0)
 
+    def stagnation_theta(self, nu: float, K: float) -> float:
+        """
+        Pohlhausen stagnation patching: θ_stag = √(0.0770 · ν / K).
+
+        At the stagnation point Λ_stag = 7.052, giving θ/δ and H from
+        the polynomial, then the L'Hôpital limit of the momentum integral
+        yields C = 0.0770.
+
+        Args:
+            nu: Kinematic viscosity [m²/s].
+            K: Velocity gradient dUe/ds at stagnation [1/s].
+
+        Returns:
+            Stagnation momentum thickness θ_stag [m].
+        """
+        self._validate_stagnation_args(nu, K)
+        return math.sqrt(0.0770 * nu / K)
+
     # ------------------------------------------------------------------
     # Pohlhausen integral relations  (functions of Λ)
     # ------------------------------------------------------------------
@@ -127,3 +148,106 @@ class PohlhausenProfile(VelocityProfile):
     def _theta_delta(Lambda: float) -> float:
         """θ/δ = 37/315 − Λ/945 − Λ²/9072."""
         return 37.0 / 315.0 - Lambda / 945.0 - Lambda ** 2 / 9072.0
+
+    # ------------------------------------------------------------------
+    # Post-processing: velocity field reconstruction
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _H_to_Lambda(H: float) -> float:
+        """Invert H = G(Λ)/Φ(Λ) to recover Λ via the quadratic formula.
+
+        The equation rearranges to:
+            (H/9072)Λ² + (H/945 − 1/120)Λ + (3/10 − 37H/315) = 0
+
+        Returns the root in [−12, 12].
+        """
+        a = H / 9072.0
+        b = H / 945.0 - 1.0 / 120.0
+        c = 3.0 / 10.0 - 37.0 * H / 315.0
+
+        disc = b * b - 4.0 * a * c
+        if disc < 0:
+            # Clamp to edge of valid range
+            return -12.0 if H > 3.5 else 12.0
+
+        sqrt_disc = math.sqrt(disc)
+        r1 = (-b + sqrt_disc) / (2.0 * a)
+        r2 = (-b - sqrt_disc) / (2.0 * a)
+
+        # Pick root in valid range; prefer the one closest to zero
+        for root in sorted([r1, r2], key=abs):
+            if -12.0 <= root <= 12.0:
+                return root
+
+        # Both outside — clamp the closer one
+        return max(-12.0, min(12.0, r1 if abs(r1) < abs(r2) else r2))
+
+    @staticmethod
+    def _profile_function(
+        eta: NDArray[np.float64],
+        Lambda: float,
+    ) -> NDArray[np.float64]:
+        """Evaluate the Pohlhausen profile g(η; Λ) on η ∈ [0, 1].
+
+        g = 2η − 2η³ + η⁴ + (Λ/6)·η·(1 − η)³
+
+        Args:
+            eta: Normalised wall-normal coordinate, shape (Ny,).
+            Lambda: Pohlhausen pressure-gradient parameter.
+
+        Returns:
+            u/Ue profile values, shape (Ny,).
+        """
+        e = np.clip(eta, 0.0, 1.0)
+        return (
+            2.0 * e - 2.0 * e**3 + e**4
+            + (Lambda / 6.0) * e * (1.0 - e) ** 3
+        )
+
+    def compute_delta(self, theta: float, H: float) -> float:
+        """
+        Pohlhausen boundary layer thickness δ = θ / Φ(Λ).
+
+        Args:
+            theta: Momentum thickness θ [m].
+            H: Shape factor δ*/θ at this station.
+
+        Returns:
+            Boundary layer thickness δ [m].
+        """
+        Lambda = self._H_to_Lambda(H)
+        Phi = self._theta_delta(Lambda)
+        if abs(Phi) < 1e-15:
+            Phi = 1e-15
+        return theta / Phi
+
+    def reconstruct_velocity(
+        self,
+        y: NDArray[np.float64],
+        theta: float,
+        H: float,
+        Ue: float,
+    ) -> NDArray[np.float64]:
+        """
+        Reconstruct u(y) from the Pohlhausen polynomial profile.
+
+        u(y) = Ue · g(y/δ; Λ)  for y ≤ δ,  u = Ue for y > δ.
+
+        Args:
+            y: Wall-normal coordinates [m], shape (Ny,).
+            theta: Momentum thickness θ [m].
+            H: Shape factor δ*/θ.
+            Ue: Edge velocity [m/s].
+
+        Returns:
+            Velocity u(y) [m/s], shape (Ny,).
+        """
+        Lambda = self._H_to_Lambda(H)
+        delta = self.compute_delta(theta, H)
+        y_arr = np.asarray(y, dtype=np.float64)
+        eta = y_arr / delta
+        # Inside BL: use profile; outside: clamp to Ue
+        u = Ue * self._profile_function(eta, Lambda)
+        u = np.where(y_arr > delta, Ue, u)
+        return u

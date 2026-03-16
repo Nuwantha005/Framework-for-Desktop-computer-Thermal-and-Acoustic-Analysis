@@ -28,6 +28,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from solvers.boundary_layer.base import BoundaryLayerResult, BoundaryLayerSolver
+from solvers.boundary_layer.field import BLFieldData, reconstruct_bl_field
 from solvers.boundary_layer.profiles.base import VelocityProfile
 from solvers.boundary_layer.profiles.blasius import BlasiusProfile
 from solvers.boundary_layer.profiles.pohlhausen import PohlhausenProfile
@@ -50,7 +51,9 @@ _PROFILE_MAP = {
     "pohlhausen": lambda **kw: PohlhausenProfile(),
     "falkner_skan": lambda **kw: FalknerSkanProfile(),
     "power_law": lambda **kw: PowerLawProfile(n=kw.get("power_law_n", 7)),
-    "thwaites": lambda **kw: ThwaitesProfile(),
+    "thwaites": lambda **kw: ThwaitesProfile(
+        reconstruction=kw.get("reconstruction", "falkner_skan"),
+    ),
 }
 
 
@@ -96,8 +99,13 @@ class BoundaryLayerPathResult:
         x: Surface x-coordinates for this path, shape (K,).
         y: Surface y-coordinates for this path, shape (K,).
         Ue: Edge velocity ``|Vt|`` along this path [m/s], shape (K,).
+        K: Velocity gradient dUe/ds at the stagnation point [1/s],
+            computed via forced-through-origin linear regression.
+            ``None`` if not yet computed.
         results: Profile name → :class:`BoundaryLayerResult`.
         transitions: Profile name → :class:`TransitionResult`.
+        fields: Profile name → :class:`BLFieldData` (populated when
+            ``reconstruct=True`` is passed to :meth:`BoundaryLayerRunner.run`).
     """
     side: str
     panel_indices: List[int]
@@ -105,8 +113,10 @@ class BoundaryLayerPathResult:
     x: NDArray[np.float64]
     y: NDArray[np.float64]
     Ue: NDArray[np.float64]
+    K: Optional[float] = None
     results: Dict[str, BoundaryLayerResult] = field(default_factory=dict)
     transitions: Dict[str, TransitionResult] = field(default_factory=dict)
+    fields: Dict[str, BLFieldData] = field(default_factory=dict)
 
     @property
     def profile_names(self) -> List[str]:
@@ -176,6 +186,112 @@ class BoundaryLayerCaseResult:
 
 
 # -------------------------------------------------------------------------
+# Stagnation detection & velocity gradient
+# -------------------------------------------------------------------------
+
+
+def _interpolate_stagnation(
+    s: NDArray[np.float64],
+    Vt: NDArray[np.float64],
+) -> float:
+    """Find the exact arc-length of the stagnation point via interpolation.
+
+    Looks for the location where the signed tangential velocity Vt changes
+    sign.  If a sign change is found between adjacent panels, linearly
+    interpolates to find the exact s where Vt = 0.  If no sign change
+    exists (e.g. the stagnation point coincides with the first panel), falls
+    back to the location of minimum |Vt|.
+
+    Args:
+        s: Raw arc-length array (K,), monotonically increasing.
+        Vt: Signed tangential velocity along the path (K,).
+
+    Returns:
+        Arc-length s_stag at the interpolated stagnation point.
+    """
+    # Look for sign changes in Vt
+    signs = np.sign(Vt)
+    sign_changes = np.where(np.diff(signs) != 0)[0]
+
+    if len(sign_changes) > 0:
+        # Use the first sign change (closest to the forward stagnation)
+        i = sign_changes[0]
+        Vt_a, Vt_b = Vt[i], Vt[i + 1]
+        dVt = Vt_b - Vt_a
+        if abs(dVt) > 1e-30:
+            t = -Vt_a / dVt  # fraction between i and i+1
+            t = np.clip(t, 0.0, 1.0)
+            return float(s[i] + t * (s[i + 1] - s[i]))
+        else:
+            return float(0.5 * (s[i] + s[i + 1]))
+    else:
+        # No sign change — stagnation is at minimum |Vt|
+        i_min = int(np.argmin(np.abs(Vt)))
+        return float(s[i_min])
+
+
+def _compute_K(
+    s: NDArray[np.float64],
+    Ue: NDArray[np.float64],
+    threshold_fraction: float = 0.10,
+    min_points: int = 3,
+) -> float:
+    """Compute velocity gradient K = dUe/ds at the stagnation point.
+
+    Uses forced-through-origin linear regression on near-stagnation panels:
+
+        K = Σ(Ue_i · s_i) / Σ(s_i²)
+
+    where the sum is taken over panels with |Ue| < threshold_fraction × max|Ue|.
+
+    Args:
+        s: Arc-length re-zeroed at stagnation (K,).  May contain negative
+           values for panels before the interpolated stagnation point.
+        Ue: Edge velocity |Vt| (K,), non-negative.
+        threshold_fraction: Fraction of peak Ue below which panels are
+            considered "near stagnation" for the regression.
+        min_points: Minimum number of points required for the fit.
+
+    Returns:
+        Positive velocity gradient K [1/s].  If the fit fails (e.g. too few
+        points), falls back to the simple forward-difference Ue[1]/s[1] at
+        the first post-stagnation panel.
+    """
+    Ue_max = float(np.max(Ue))
+    if Ue_max < 1e-14:
+        return 1.0  # degenerate: no flow
+
+    threshold = threshold_fraction * Ue_max
+
+    # Select near-stagnation panels with positive s (downstream of stagnation)
+    mask = (Ue < threshold) & (s > 1e-14)
+    s_fit = s[mask]
+    Ue_fit = Ue[mask]
+
+    # If not enough points from the threshold, take the first `min_points`
+    # downstream panels instead
+    if len(s_fit) < min_points:
+        downstream = np.where(s > 1e-14)[0]
+        if len(downstream) >= min_points:
+            sel = downstream[:min_points]
+        elif len(downstream) > 0:
+            sel = downstream
+        else:
+            # All panels are at or before stagnation — very unusual
+            return float(Ue_max / (s[-1] - s[0])) if s[-1] > s[0] else 1.0
+        s_fit = s[sel]
+        Ue_fit = Ue[sel]
+
+    # Forced-through-origin regression: K = Σ(Ue·s) / Σ(s²)
+    denom = float(np.sum(s_fit**2))
+    if denom < 1e-30:
+        # Degenerate: all points at the same s
+        return 1.0
+    K = float(np.sum(Ue_fit * s_fit) / denom)
+    return max(K, 1e-10)  # K must be positive
+
+
+# -------------------------------------------------------------------------
 # Runner
 # -------------------------------------------------------------------------
 
@@ -222,6 +338,9 @@ class BoundaryLayerRunner:
         transition_model: Optional[str] = None,
         n_crit: float = 9.0,
         power_law_n: int = 7,
+        reconstruct: bool = False,
+        reconstruction_n_y: int = 80,
+        thwaites_reconstruction: Optional[str] = None,
     ) -> BoundaryLayerCaseResult:
         """
         Execute the BL solver on both sides of the body.
@@ -235,6 +354,14 @@ class BoundaryLayerRunner:
             transition_model: ``"michel"`` or ``"en"`` (overrides case config).
             n_crit: e^N critical factor (default 9.0).
             power_law_n: Power-law exponent (default 7).
+            reconstruct: If *True*, run velocity-field reconstruction after
+                the ODE solve and store :class:`BLFieldData` in each
+                path's ``fields`` dict.
+            reconstruction_n_y: Number of wall-normal grid points for
+                velocity reconstruction (default 80).
+            thwaites_reconstruction: Reconstruction pairing for the
+                Thwaites profile: ``"falkner_skan"`` or ``"pohlhausen"``.
+                Falls back to ``case.yaml`` then ``"falkner_skan"``.
 
         Returns:
             :class:`BoundaryLayerCaseResult` with upper/lower paths.
@@ -250,6 +377,16 @@ class BoundaryLayerRunner:
             power_law_n = bl_cfg.power_law_n
         if n_crit == 9.0 and bl_cfg.n_crit != 9.0:
             n_crit = bl_cfg.n_crit
+
+        # Resolve Thwaites reconstruction pairing
+        if thwaites_reconstruction is None:
+            thwaites_reconstruction = getattr(
+                bl_cfg, "thwaites_reconstruction", "falkner_skan",
+            )
+        # Resolve reconstruction_n_y from config if available
+        cfg_n_y = getattr(bl_cfg, "reconstruction_n_y", None)
+        if reconstruction_n_y == 80 and cfg_n_y is not None:
+            reconstruction_n_y = cfg_n_y
 
         nu = self._resolve_nu(nu)
 
@@ -280,16 +417,22 @@ class BoundaryLayerRunner:
 
         print(
             f"  Upper path: {len(upper_idx)} panels, "
-            f"s_max = {upper_path.s[-1]:.4f} m"
+            f"s_max = {upper_path.s[-1]:.4f} m, "
+            f"K = {upper_path.K:.2f} 1/s"
         )
         print(
             f"  Lower path: {len(lower_idx)} panels, "
-            f"s_max = {lower_path.s[-1]:.4f} m"
+            f"s_max = {lower_path.s[-1]:.4f} m, "
+            f"K = {lower_path.K:.2f} 1/s"
         )
 
         # --- Run BL for each profile on each side -------------------------
         for pname in profiles:
-            profile = create_profile(pname, power_law_n=power_law_n)
+            profile = create_profile(
+                pname,
+                power_law_n=power_law_n,
+                reconstruction=thwaites_reconstruction,
+            )
             for path in (upper_path, lower_path):
                 bl_solver = BoundaryLayerSolver(
                     edge_velocity=path.Ue,
@@ -297,7 +440,7 @@ class BoundaryLayerRunner:
                     nu=nu,
                     profile=profile,
                 )
-                result = bl_solver.solve()
+                result = bl_solver.solve(K=path.K)
                 path.results[result.profile_name] = result
 
                 # Transition prediction on this path
@@ -307,6 +450,16 @@ class BoundaryLayerRunner:
                         result.theta, nu, n_crit,
                     )
                     path.transitions[result.profile_name] = tr
+
+                # Velocity-field reconstruction (optional)
+                if reconstruct:
+                    try:
+                        fld = reconstruct_bl_field(
+                            result, profile, n_y=reconstruction_n_y,
+                        )
+                        path.fields[result.profile_name] = fld
+                    except NotImplementedError:
+                        pass  # profile lacks reconstruction (e.g. future stubs)
 
         return BoundaryLayerCaseResult(
             case_name=self.case.name,
@@ -410,15 +563,29 @@ class BoundaryLayerRunner:
         """
         Build a :class:`BoundaryLayerPathResult` for one surface streamline.
 
-        Arc length is computed from panel-centre distances, starting from
-        0 at the forward stagnation panel.  Edge velocity is ``|Vt|`` so
-        that it is always non-negative regardless of panel tangent direction.
+        Procedure:
+        1. Compute raw arc-length from panel-centre distances.
+        2. Detect the exact stagnation point via sign-change interpolation
+           in the signed tangential velocity Vt.  Re-zero arc-length so
+           that s = 0 at the interpolated stagnation location.
+        3. Edge velocity Ue = |Vt|, always non-negative.
+        4. Compute the stagnation velocity gradient K = dUe/ds|_{s=0}
+           via forced-through-origin linear regression on near-stagnation
+           panels.
         """
         xi = x[indices]
         yi = y[indices]
         ds = np.sqrt(np.diff(xi) ** 2 + np.diff(yi) ** 2)
-        s_path = np.concatenate([[0.0], np.cumsum(ds)])
-        Ue_path = np.abs(Vt[indices])
+        s_raw = np.concatenate([[0.0], np.cumsum(ds)])
+        Vt_path = Vt[indices]
+
+        # -- Exact stagnation point via sign-change interpolation ----------
+        s_stag = _interpolate_stagnation(s_raw, Vt_path)
+        s_path = s_raw - s_stag  # re-zero so s = 0 at stagnation
+        Ue_path = np.abs(Vt_path)
+
+        # -- Velocity gradient K via forced-through-origin regression ------
+        K = _compute_K(s_path, Ue_path)
 
         return BoundaryLayerPathResult(
             side=side,
@@ -427,6 +594,7 @@ class BoundaryLayerRunner:
             x=xi.copy(),
             y=yi.copy(),
             Ue=Ue_path,
+            K=K,
         )
 
     # ------------------------------------------------------------------

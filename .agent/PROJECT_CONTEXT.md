@@ -1,19 +1,16 @@
 # Panel Method Solver — Project Context
-**Last updated**: 2026-03-01
-**Updated by**: agent — Linear source/doublet solver implementation
+**Last updated**: 2026-03-16
+**Updated by**: agent — BL solver refactorization (Phases 1–6)
 
 ## Current Focus
-> **Phase: Viscous BL solver (Von Kármán integral)**
+> **Phase: Higher-order panels (linear source) → improve Vt accuracy**
 >
-> All five 2D panel solvers now implemented (constant source, linear source,
-> linear vortex, Dirichlet doublet/Morino, linear source/doublet). Linear vortex
-> and linear source provide best accuracy (~3.7–3.8% Vt error vs OpenFOAM).
-> Constant-order Dirichlet methods (constant doublet: 50.87%, linear source/doublet: 50.83%)
-> match each other as expected since dμ/ds extraction is constant-order for velocity.
-> Von Kármán momentum integral BL solver now implemented with multiple velocity
-> profiles (Blasius, Thwaites, Pohlhausen, Falkner-Skan, Power Law) and transition
-> criteria (Michel, e^N). Next: thermal BL (BDIM from Gao 2013), viscous-inviscid
-> coupling, and 3D panel methods with PyVista visualization.
+> All five 2D panel solvers now implemented. Von Kármán momentum integral BL
+> solver complete with multiple velocity profiles, stagnation patching,
+> tabulated ODE data, velocity-field reconstruction, and new visualization
+> (s-y contours, normalised contours, velocity-coloured envelopes, OF placeholder).
+> Next: thermal BL (BDIM from Gao 2013), viscous-inviscid coupling, and
+> 3D panel methods with PyVista visualization.
 
 ## What This Project Is
 A 2D panel method solver for potential flow analysis, part of a Final Year Project to develop a framework for desktop computer thermal and acoustic analysis. The solver uses constant-strength source panels with Neumann boundary conditions (no-penetration). An OpenFOAM-based validation pipeline compares panel method results against CFD. Future phases will add vortex panels, boundary layer solvers, and thermal coupling.
@@ -29,8 +26,14 @@ A 2D panel method solver for potential flow analysis, part of a Final Year Proje
 - [x] OpenFOAM validation pipeline (meshing, grid independence, comparison)
 - [x] Visualization (contours, streamlines, Cp, surface envelopes, comparison)
 - [x] Post-processing pipeline (pressure, velocity potential, vorticity, stream function)
+- [x] Viscous boundary layer solver (Von Kármán integral) — complete with:
+  - Tabulated Blasius & Falkner-Skan ODE data (scripts + JSON)
+  - Exact stagnation point detection (sign-change interpolation)
+  - Analytical stagnation patching (profile-specific θ₀)
+  - Velocity-field reconstruction (δ(s), u(s,y) from integral results)
+  - BL velocity-field visualization (s-y contour, normalised, velocity envelope, OF placeholder)
+  - Runner integration with optional reconstruction, config schema updates
 - [ ] Quadratic strength panels
-- [ ] Viscous boundary layer solver (Von Kármán integral)
 - [ ] Thermal boundary layer solver (BDIM)
 - [ ] Coupled inviscid-viscous iteration
 - [ ] 3D panel method

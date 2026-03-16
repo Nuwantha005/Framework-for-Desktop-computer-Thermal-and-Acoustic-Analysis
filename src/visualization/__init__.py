@@ -18,6 +18,14 @@ from .bl_plots import (
     plot_bl_envelope,
     plot_bl_envelope_comparison,
     plot_bl_comparison,
+    # Phase 5 — velocity-field visualizations
+    plot_bl_velocity_contour,
+    plot_bl_velocity_contour_normalized,
+    plot_bl_velocity_envelope,
+    plot_bl_velocity_contour_two_sides,
+    plot_bl_velocity_contour_normalized_two_sides,
+    plot_bl_velocity_envelope_two_sides,
+    plot_bl_of_comparison,
 )
 
 # Legacy exports (prefer Visualizer for new code)
@@ -49,6 +57,14 @@ __all__ = [
     'plot_bl_envelope',
     'plot_bl_envelope_comparison',
     'plot_bl_comparison',
+    # Boundary layer velocity-field plots (Phase 5)
+    'plot_bl_velocity_contour',
+    'plot_bl_velocity_contour_normalized',
+    'plot_bl_velocity_envelope',
+    'plot_bl_velocity_contour_two_sides',
+    'plot_bl_velocity_contour_normalized_two_sides',
+    'plot_bl_velocity_envelope_two_sides',
+    'plot_bl_of_comparison',
     # Legacy
     'MeshPlotter',
     'quick_plot_mesh',

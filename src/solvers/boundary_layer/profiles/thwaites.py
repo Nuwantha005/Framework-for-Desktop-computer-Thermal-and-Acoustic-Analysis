@@ -35,8 +35,10 @@ References
 from __future__ import annotations
 
 import math
+from typing import Literal
 
 import numpy as np
+from numpy.typing import NDArray
 
 from .base import VelocityProfile, ProfileClosureData
 
@@ -66,7 +68,22 @@ class ThwaitesProfile(VelocityProfile):
 
     Uses tabulated S(λ) and H(λ) derived from Falkner-Skan solutions.
     Separation is flagged when λ < −0.09.
+
+    Since Thwaites provides no explicit velocity profile shape, velocity
+    reconstruction is delegated to a paired profile family.
+
+    Args:
+        reconstruction: Which profile family to use for velocity field
+            reconstruction.  ``"falkner_skan"`` (default) inverts H → β
+            and uses the F-S similarity profile.  ``"pohlhausen"`` inverts
+            H → Λ and uses the 4th-order polynomial.
     """
+
+    def __init__(
+        self,
+        reconstruction: Literal["falkner_skan", "pohlhausen"] = "falkner_skan",
+    ) -> None:
+        self._reconstruction = reconstruction
 
     @property
     def name(self) -> str:
@@ -117,6 +134,24 @@ class ThwaitesProfile(VelocityProfile):
         s0 = nu / Ue0
         return math.sqrt(0.45 * nu * s0 / Ue0)
 
+    def stagnation_theta(self, nu: float, K: float) -> float:
+        """
+        Thwaites stagnation patching: θ_stag = √(0.075 · ν / K).
+
+        Thwaites' quadrature θ² = 0.45ν/Ue⁶ ∫ Ue⁵ ds with Ue = K·s
+        evaluates analytically at the stagnation point to give
+        C = 0.45/6 = 0.075.
+
+        Args:
+            nu: Kinematic viscosity [m²/s].
+            K: Velocity gradient dUe/ds at stagnation [1/s].
+
+        Returns:
+            Stagnation momentum thickness θ_stag [m].
+        """
+        self._validate_stagnation_args(nu, K)
+        return math.sqrt(0.075 * nu / K)
+
     # ------------------------------------------------------------------
     # Utility: direct Thwaites quadrature (can be used externally)
     # ------------------------------------------------------------------
@@ -154,3 +189,55 @@ class ThwaitesProfile(VelocityProfile):
         safe_Ue6 = np.where(np.abs(Ue6) > 1e-30, Ue6, 1e-30)
         theta_sq = 0.45 * nu / safe_Ue6 * integral
         return np.sqrt(np.maximum(theta_sq, 0.0))
+
+    # ------------------------------------------------------------------
+    # Post-processing: velocity field reconstruction (via pairing)
+    # ------------------------------------------------------------------
+
+    @property
+    def reconstruction(self) -> Literal["falkner_skan", "pohlhausen"]:
+        """Active reconstruction pairing."""
+        return self._reconstruction  # type: ignore[return-value]
+
+    def _paired_profile(self) -> VelocityProfile:
+        """Return the paired profile instance used for reconstruction."""
+        if self._reconstruction == "pohlhausen":
+            from .pohlhausen import PohlhausenProfile
+            return PohlhausenProfile()
+        else:
+            from .falkner_skan import FalknerSkanProfile
+            return FalknerSkanProfile()
+
+    def compute_delta(self, theta: float, H: float) -> float:
+        """
+        Compute δ by delegating to the paired reconstruction profile.
+
+        Args:
+            theta: Momentum thickness θ [m].
+            H: Shape factor δ*/θ.
+
+        Returns:
+            Boundary layer thickness [m].
+        """
+        return self._paired_profile().compute_delta(theta, H)
+
+    def reconstruct_velocity(
+        self,
+        y: NDArray[np.float64],
+        theta: float,
+        H: float,
+        Ue: float,
+    ) -> NDArray[np.float64]:
+        """
+        Reconstruct u(y) by delegating to the paired profile.
+
+        Args:
+            y: Wall-normal coordinates [m], shape (Ny,).
+            theta: Momentum thickness θ [m].
+            H: Shape factor δ*/θ.
+            Ue: Edge velocity [m/s].
+
+        Returns:
+            Velocity u(y) [m/s], shape (Ny,).
+        """
+        return self._paired_profile().reconstruct_velocity(y, theta, H, Ue)

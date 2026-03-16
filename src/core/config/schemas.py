@@ -183,6 +183,16 @@ class BoundaryLayerConfig(BaseModel):
         gt=0,
         description="Scale factor for cf envelope plots"
     )
+    thwaites_reconstruction: Literal["falkner_skan", "pohlhausen"] = Field(
+        default="falkner_skan",
+        description="Reconstruction pairing for Thwaites profile"
+    )
+    reconstruction_n_y: int = Field(
+        default=80,
+        ge=10,
+        le=500,
+        description="Number of wall-normal grid points for velocity reconstruction"
+    )
 
 
 class OutputConfig(BaseModel):

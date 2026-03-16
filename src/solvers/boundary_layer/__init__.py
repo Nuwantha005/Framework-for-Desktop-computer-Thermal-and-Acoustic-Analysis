@@ -19,6 +19,7 @@ Quick start::
 """
 
 from .base import BoundaryLayerSolver, BoundaryLayerResult
+from .field import BLFieldData, reconstruct_bl_field
 from .transition import (
     TransitionResult,
     michel_criterion,
@@ -37,6 +38,9 @@ __all__ = [
     # Solver & result
     "BoundaryLayerSolver",
     "BoundaryLayerResult",
+    # Field reconstruction
+    "BLFieldData",
+    "reconstruct_bl_field",
     # Profiles
     "VelocityProfile",
     "BlasiusProfile",

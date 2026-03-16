@@ -39,6 +39,12 @@ nav:
       - Dirichlet Doublet Panels: theory/dirichlet_doublet_panels.md
       - Linear Source/Doublet Panels: theory/linear_source_doublet_panels.md
       - Boundary Layers: theory/boundary_layers.md
+      - BL Profiles:
+          - Blasius: theory/bl_profiles/blasius.md
+          - Falkner-Skan: theory/bl_profiles/falkner_skan.md
+          - Pohlhausen: theory/bl_profiles/pohlhausen.md
+          - Thwaites: theory/bl_profiles/thwaites.md
+          - Power-Law (Turbulent): theory/bl_profiles/power_law.md
       - Thermal Boundary Layer: theory/thermal_boundary_layer.md
   - Modules:
       - Geometry: modules/geometry.md

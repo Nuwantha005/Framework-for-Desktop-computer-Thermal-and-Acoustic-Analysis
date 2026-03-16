@@ -23,7 +23,11 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
+from numpy.typing import NDArray
+
 from .base import VelocityProfile, ProfileClosureData
+from .tables import blasius_table
 
 
 # Exact Blasius constants
@@ -75,7 +79,7 @@ class BlasiusProfile(VelocityProfile):
 
     def initial_theta(self, nu: float, Ue0: float) -> float:
         """
-        Blasius starting momentum thickness.
+        Blasius starting momentum thickness (legacy fallback).
 
         Uses the Blasius flat-plate formula:
             θ = 0.664 √(ν s₀ / Ue)
@@ -94,3 +98,71 @@ class BlasiusProfile(VelocityProfile):
         # Small starting distance to avoid zero θ
         s0 = nu / Ue0
         return 0.664 * math.sqrt(nu * s0 / Ue0)
+
+    def stagnation_theta(self, nu: float, K: float) -> float:
+        """
+        Blasius stagnation patching: θ_stag = √(0.04803 · ν / K).
+
+        Derived by substituting Ue = K·s into the momentum integral with
+        constant-H Blasius closure and applying L'Hopital's rule as s → 0.
+        The constant 0.04803 = 2·f''(0) / (5 + 2·H_Blasius) from the
+        Blasius similarity solution.
+
+        Args:
+            nu: Kinematic viscosity [m²/s].
+            K: Velocity gradient dUe/ds at stagnation [1/s].
+
+        Returns:
+            Stagnation momentum thickness θ_stag [m].
+        """
+        self._validate_stagnation_args(nu, K)
+        return math.sqrt(0.04803 * nu / K)
+
+    # ------------------------------------------------------------------
+    # Post-processing: velocity field reconstruction
+    # ------------------------------------------------------------------
+
+    def compute_delta(self, theta: float, H: float) -> float:
+        """
+        Blasius δ₉₉ from momentum thickness.
+
+        L = θ / I₂,  δ₉₉ = η₉₉ · L.
+
+        Args:
+            theta: Momentum thickness θ [m].
+            H: Shape factor (unused — constant for Blasius).
+
+        Returns:
+            Boundary layer thickness δ₉₉ [m].
+        """
+        tbl = blasius_table()
+        c = tbl.constants
+        L = theta / c.I_2
+        return c.eta_99 * L
+
+    def reconstruct_velocity(
+        self,
+        y: NDArray[np.float64],
+        theta: float,
+        H: float,
+        Ue: float,
+    ) -> NDArray[np.float64]:
+        """
+        Reconstruct u(y) from the Blasius similarity profile.
+
+        u(y) = Ue · f'(η)  where η = y / L,  L = θ / I₂.
+
+        Args:
+            y: Wall-normal coordinates [m], shape (Ny,).
+            theta: Momentum thickness θ [m].
+            H: Shape factor (unused — constant for Blasius).
+            Ue: Edge velocity [m/s].
+
+        Returns:
+            Velocity u(y) [m/s], shape (Ny,).
+        """
+        tbl = blasius_table()
+        c = tbl.constants
+        L = theta / c.I_2
+        eta = np.asarray(y, dtype=np.float64) / L
+        return Ue * tbl.fprime(eta)

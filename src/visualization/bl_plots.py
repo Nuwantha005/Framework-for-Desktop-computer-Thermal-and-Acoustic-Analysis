@@ -18,8 +18,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from numpy.typing import NDArray
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
+from matplotlib.collections import LineCollection
 
 from visualization.surface_envelope import (
     compute_outward_normals,
@@ -429,3 +431,654 @@ def plot_bl_comparison(
         plt.show()
 
     return fig
+
+
+# =========================================================================
+#  Phase 5 — velocity-field visualizations (require BLFieldData)
+# =========================================================================
+
+
+def plot_bl_velocity_contour(
+    field,  # BLFieldData
+    ax: Optional[Axes] = None,
+    cmap: str = "viridis",
+    show_delta: bool = True,
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+    n_levels: int = 64,
+) -> Tuple[Figure, Axes]:
+    """s-y velocity contour plot for one BL path.
+
+    X-axis is arc-length *s*, y-axis is wall-normal distance *y*.
+    Velocity magnitude is shown as a filled contour / pcolormesh.
+    Optionally overlays δ(s) as a white dashed line.
+
+    Args:
+        field: :class:`BLFieldData` from :func:`reconstruct_bl_field`.
+        ax: Existing axes (creates new figure if *None*).
+        cmap: Matplotlib colormap name.
+        show_delta: Draw δ(s) curve on top.
+        title: Plot title.
+        output_path: Save path.
+        n_levels: Number of contour levels.
+
+    Returns:
+        ``(fig, ax)`` tuple.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 4))
+    else:
+        fig = ax.get_figure()
+
+    # field.s (M,), field.y (M, Ny), field.u (M, Ny)
+    M, Ny = field.u.shape
+
+    if M < 2:
+        ax.text(
+            0.5, 0.5,
+            f"Insufficient data ({M} station{'s' if M != 1 else ''})",
+            transform=ax.transAxes, ha="center", va="center",
+            fontsize=11, color="0.4",
+        )
+        if title:
+            ax.set_title(title, fontsize=11)
+        fig.tight_layout()
+        if output_path is not None:
+            fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        return fig, ax
+
+    # Build 2-D coordinate grids for pcolormesh
+    # Extend s to cell edges for pcolormesh (M+1 edges)
+    s_edges = _cell_edges(field.s)  # (M+1,)
+    # For each station the y grid is the same length Ny; build edges (Ny+1)
+    # We use per-station y ranges, so we construct a full (M+1, Ny+1) mesh
+    y_edge_grid = np.zeros((M + 1, Ny + 1), dtype=np.float64)
+    for i in range(M):
+        y_edge_grid[i] = _cell_edges(field.y[i])
+    y_edge_grid[M] = y_edge_grid[M - 1]  # repeat last row
+
+    S_grid = np.broadcast_to(s_edges[:, np.newaxis], (M + 1, Ny + 1))
+
+    pcm = ax.pcolormesh(
+        S_grid, y_edge_grid, field.u,
+        cmap=cmap, shading="flat", rasterized=True,
+    )
+    fig.colorbar(pcm, ax=ax, label=r"$u$ [m/s]", shrink=0.85, pad=0.02)
+
+    if show_delta:
+        ax.plot(field.s, field.delta, "w--", lw=1.5, label=r"$\delta(s)$")
+        ax.legend(loc="upper left", fontsize=8, framealpha=0.8)
+
+    ax.set_xlabel("Arc length $s$ [m]")
+    ax.set_ylabel("Wall-normal $y$ [m]")
+    ax.set_xlim(field.s[0], field.s[-1])
+    ax.set_ylim(0, None)
+
+    if title:
+        ax.set_title(title, fontsize=11)
+    else:
+        ax.set_title(
+            f"BL velocity contour — {field.profile_name}", fontsize=11,
+        )
+    fig.tight_layout()
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, ax
+
+
+def plot_bl_velocity_contour_normalized(
+    field,  # BLFieldData
+    ax: Optional[Axes] = None,
+    cmap: str = "viridis",
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+) -> Tuple[Figure, Axes]:
+    """Normalized s-(y/δ) velocity contour for one BL path.
+
+    Same as :func:`plot_bl_velocity_contour` but with the y-axis
+    replaced by y/δ(s), producing a uniform rectangle.  This makes
+    the thin parts of the BL easier to inspect.
+
+    Args:
+        field: :class:`BLFieldData`.
+        ax: Existing axes.
+        cmap: Colormap.
+        title: Plot title.
+        output_path: Save path.
+
+    Returns:
+        ``(fig, ax)`` tuple.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 4))
+    else:
+        fig = ax.get_figure()
+
+    M, Ny = field.u.shape
+
+    if M < 2:
+        ax.text(
+            0.5, 0.5,
+            f"Insufficient data ({M} station{'s' if M != 1 else ''})",
+            transform=ax.transAxes, ha="center", va="center",
+            fontsize=11, color="0.4",
+        )
+        if title:
+            ax.set_title(title, fontsize=11)
+        fig.tight_layout()
+        if output_path is not None:
+            fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        return fig, ax
+
+    # Normalise y by delta at each station → eta in [0, 1] (or up to extend)
+    eta = np.zeros_like(field.y)
+    for i in range(M):
+        if field.delta[i] > 0:
+            eta[i] = field.y[i] / field.delta[i]
+        else:
+            eta[i] = np.linspace(0.0, 1.0, Ny)
+
+    # Build edge grids
+    s_edges = _cell_edges(field.s)
+    eta_edge_grid = np.zeros((M + 1, Ny + 1), dtype=np.float64)
+    for i in range(M):
+        eta_edge_grid[i] = _cell_edges(eta[i])
+    eta_edge_grid[M] = eta_edge_grid[M - 1]
+
+    S_grid = np.broadcast_to(s_edges[:, np.newaxis], (M + 1, Ny + 1))
+
+    pcm = ax.pcolormesh(
+        S_grid, eta_edge_grid, field.u,
+        cmap=cmap, shading="flat", rasterized=True,
+    )
+    fig.colorbar(pcm, ax=ax, label=r"$u$ [m/s]", shrink=0.85, pad=0.02)
+
+    # Horizontal line at η = 1 (BL edge)
+    ax.axhline(1.0, color="w", ls="--", lw=1.0, alpha=0.7, label=r"$\delta$")
+    ax.legend(loc="upper left", fontsize=8, framealpha=0.8)
+
+    ax.set_xlabel("Arc length $s$ [m]")
+    ax.set_ylabel(r"$y / \delta$")
+    ax.set_xlim(field.s[0], field.s[-1])
+    ax.set_ylim(0, None)
+
+    if title:
+        ax.set_title(title, fontsize=11)
+    else:
+        ax.set_title(
+            f"Normalized BL velocity — {field.profile_name}", fontsize=11,
+        )
+    fig.tight_layout()
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, ax
+
+
+def plot_bl_velocity_envelope(
+    field,  # BLFieldData
+    surface_x: NDArray[np.float64],
+    surface_y: NDArray[np.float64],
+    panel_indices: List[int],
+    scale: float = 0.15,
+    cmap: str = "viridis",
+    ax: Optional[Axes] = None,
+    show_body: bool = True,
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+    n_y_vis: int = 20,
+) -> Tuple[Figure, Axes]:
+    """Wrapped velocity-coloured envelope plot around the body.
+
+    This extends the plain δ-envelope plot by filling the region between
+    the body surface and δ(s) with the reconstructed velocity field,
+    colour-mapped to show the velocity distribution.
+
+    The plot is produced for a **single path** (upper or lower).  Use
+    :func:`plot_bl_velocity_envelope_two_sides` for both.
+
+    Args:
+        field: :class:`BLFieldData` for one path.
+        surface_x: Full body x-coordinates (M_body,).
+        surface_y: Full body y-coordinates (M_body,).
+        panel_indices: Indices mapping path panels to full-body panels.
+        scale: Geometric scale factor for the envelope displacement.
+        cmap: Colormap for velocity.
+        ax: Existing axes.
+        show_body: Draw body outline.
+        title: Plot title.
+        output_path: Save path.
+        n_y_vis: Number of wall-normal layers to draw in the envelope.
+
+    Returns:
+        ``(fig, ax)`` tuple.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 8))
+    else:
+        fig = ax.get_figure()
+
+    if field.u.shape[0] < 2:
+        ax.text(
+            0.5, 0.5,
+            f"Insufficient data ({field.u.shape[0]} station"
+            f"{'s' if field.u.shape[0] != 1 else ''})",
+            transform=ax.transAxes, ha="center", va="center",
+            fontsize=11, color="0.4",
+        )
+        if show_body:
+            bx = np.append(surface_x, surface_x[0])
+            by = np.append(surface_y, surface_y[0])
+            ax.plot(bx, by, "k-", lw=2.0, zorder=10, label="Body")
+            ax.set_aspect("equal")
+        if title:
+            ax.set_title(title, fontsize=11)
+        fig.tight_layout()
+        if output_path is not None:
+            fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        return fig, ax
+
+    # Compute outward normals for the full body
+    normals = compute_outward_normals(surface_x, surface_y, closed=True)
+
+    # Draw body outline
+    if show_body:
+        bx = np.append(surface_x, surface_x[0])
+        by = np.append(surface_y, surface_y[0])
+        ax.plot(bx, by, "k-", lw=2.0, zorder=10, label="Body")
+
+    # We draw the velocity field as stacked coloured quads between
+    # wall-normal layers (y_j, y_{j+1}) at each arc-length station.
+    # Only stations that appear in BLFieldData are drawn.
+    M_field, Ny = field.u.shape
+
+    # Map field stations back to panel indices.
+    # field.s corresponds to valid stations from BoundaryLayerResult.
+    # We need the (x, y) position and outward normal for each station.
+    # Build a mapping: for each field station i, find the closest panel
+    # index in the path.
+    path_s = np.zeros(len(panel_indices))
+    path_x = surface_x[panel_indices]
+    path_y = surface_y[panel_indices]
+    ds = np.sqrt(np.diff(path_x) ** 2 + np.diff(path_y) ** 2)
+    path_s[1:] = np.cumsum(ds)
+    path_normals = normals[panel_indices]
+
+    # For each field station, interpolate position and normal on the path
+    # (field.s may not exactly match path panel midpoints because of
+    #  re-zeroing, but the relative ordering is the same)
+    # We use the field.s values to interpolate into the path geometry.
+    # First, re-zero path_s to match field.s domain
+    # field.s starts at the first valid station (s > 0 after stagnation)
+    # We match by index: field has M_field stations, path has len(panel_indices) panels.
+    # The safest approach: find the closest path panel for each field.s value.
+    # But field.s was computed from the same path — we just need to shift path_s
+    # to the same zero point.
+
+    # Match field.s[0] to the nearest path_s and compute offset
+    # Actually, BLFieldData.s comes from result.s[valid_idx] which is the
+    # same array as the path.s (from BoundaryLayerPathResult) — same re-zeroing.
+    # So we can directly interpolate x, y, nx, ny as functions of path.s.
+    # But path.s may have been re-zeroed differently. Let's use the original
+    # panel_indices and compute s from the same geometry.
+
+    # Simplest robust approach: for each field station, find nearest path panel
+    field_px = np.interp(field.s, path_s - path_s[0] + field.s[0], path_x)
+    field_py = np.interp(field.s, path_s - path_s[0] + field.s[0], path_y)
+    field_nx = np.interp(field.s, path_s - path_s[0] + field.s[0], path_normals[:, 0])
+    field_ny = np.interp(field.s, path_s - path_s[0] + field.s[0], path_normals[:, 1])
+
+    # Normalise field normals
+    n_len = np.sqrt(field_nx**2 + field_ny**2)
+    n_len = np.where(n_len < 1e-12, 1.0, n_len)
+    field_nx /= n_len
+    field_ny /= n_len
+
+    # Global velocity range for consistent coloring
+    u_min = float(np.nanmin(field.u))
+    u_max = float(np.nanmax(field.u))
+    norm = mcolors.Normalize(vmin=u_min, vmax=u_max)
+    cmap_obj = plt.cm.get_cmap(cmap)
+
+    # Determine how many y-layers to draw (subsample if Ny > n_y_vis)
+    if Ny > n_y_vis:
+        y_idx = np.linspace(0, Ny - 1, n_y_vis + 1, dtype=int)
+    else:
+        y_idx = np.arange(Ny)
+
+    # Scale: map delta to geometric displacement
+    delta_max = float(np.nanmax(field.delta)) if np.any(field.delta > 0) else 1.0
+
+    for i in range(M_field - 1):
+        for jj in range(len(y_idx) - 1):
+            j0 = y_idx[jj]
+            j1 = y_idx[jj + 1]
+            # Mean velocity for this quad's colour
+            u_avg = 0.25 * (
+                field.u[i, j0] + field.u[i, j1]
+                + field.u[i + 1, j0] + field.u[i + 1, j1]
+            )
+            color = cmap_obj(norm(u_avg))
+
+            # y displacement scaled to geometry
+            d00 = field.y[i, j0] / delta_max * scale
+            d01 = field.y[i, j1] / delta_max * scale
+            d10 = field.y[i + 1, j0] / delta_max * scale
+            d11 = field.y[i + 1, j1] / delta_max * scale
+
+            quad_x = [
+                field_px[i] + d00 * field_nx[i],
+                field_px[i] + d01 * field_nx[i],
+                field_px[i + 1] + d11 * field_nx[i + 1],
+                field_px[i + 1] + d10 * field_nx[i + 1],
+            ]
+            quad_y = [
+                field_py[i] + d00 * field_ny[i],
+                field_py[i] + d01 * field_ny[i],
+                field_py[i + 1] + d11 * field_ny[i + 1],
+                field_py[i + 1] + d10 * field_ny[i + 1],
+            ]
+            ax.fill(quad_x, quad_y, color=color, edgecolor="none", zorder=2)
+
+    # Colorbar
+    sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=norm)
+    sm.set_array([])
+    fig.colorbar(sm, ax=ax, label=r"$u$ [m/s]", shrink=0.8, pad=0.02)
+
+    # Draw delta envelope line
+    env_x = field_px + (field.delta / delta_max * scale) * field_nx
+    env_y = field_py + (field.delta / delta_max * scale) * field_ny
+    ax.plot(env_x, env_y, "w--", lw=1.2, zorder=5, label=r"$\delta(s)$")
+
+    ax.set_aspect("equal")
+    ax.set_xlabel("$x$")
+    ax.set_ylabel("$y$")
+    ax.legend(loc="upper right", fontsize=8, framealpha=0.8)
+    ax.grid(True, alpha=0.3)
+
+    if title:
+        ax.set_title(title, fontsize=11)
+    else:
+        ax.set_title(
+            f"Velocity envelope — {field.profile_name}", fontsize=11,
+        )
+    fig.tight_layout()
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, ax
+
+
+# -------------------------------------------------------------------------
+# Two-side convenience wrappers
+# -------------------------------------------------------------------------
+
+
+def plot_bl_velocity_contour_two_sides(
+    field_upper,  # BLFieldData
+    field_lower,  # BLFieldData
+    cmap: str = "viridis",
+    show_delta: bool = True,
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+) -> Tuple[Figure, Tuple[Axes, Axes]]:
+    """Side-by-side s-y velocity contour for upper and lower paths.
+
+    Args:
+        field_upper: :class:`BLFieldData` for the upper path.
+        field_lower: :class:`BLFieldData` for the lower path.
+        cmap: Colormap.
+        show_delta: Show δ(s) overlay.
+        title: Super-title.
+        output_path: Save path.
+
+    Returns:
+        ``(fig, (ax_upper, ax_lower))`` tuple.
+    """
+    fig, (ax_u, ax_l) = plt.subplots(2, 1, figsize=(10, 7), sharex=False)
+
+    plot_bl_velocity_contour(
+        field_upper, ax=ax_u, cmap=cmap, show_delta=show_delta,
+        title=f"Upper — {field_upper.profile_name}",
+    )
+    plot_bl_velocity_contour(
+        field_lower, ax=ax_l, cmap=cmap, show_delta=show_delta,
+        title=f"Lower — {field_lower.profile_name}",
+    )
+
+    if title:
+        fig.suptitle(title, fontsize=13, y=1.02)
+    fig.tight_layout()
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, (ax_u, ax_l)
+
+
+def plot_bl_velocity_contour_normalized_two_sides(
+    field_upper,  # BLFieldData
+    field_lower,  # BLFieldData
+    cmap: str = "viridis",
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+) -> Tuple[Figure, Tuple[Axes, Axes]]:
+    """Side-by-side normalised s-(y/δ) velocity contour for both paths.
+
+    Args:
+        field_upper: :class:`BLFieldData` for the upper path.
+        field_lower: :class:`BLFieldData` for the lower path.
+        cmap: Colormap.
+        title: Super-title.
+        output_path: Save path.
+
+    Returns:
+        ``(fig, (ax_upper, ax_lower))`` tuple.
+    """
+    fig, (ax_u, ax_l) = plt.subplots(2, 1, figsize=(10, 7), sharex=False)
+
+    plot_bl_velocity_contour_normalized(
+        field_upper, ax=ax_u, cmap=cmap,
+        title=f"Upper — {field_upper.profile_name}",
+    )
+    plot_bl_velocity_contour_normalized(
+        field_lower, ax=ax_l, cmap=cmap,
+        title=f"Lower — {field_lower.profile_name}",
+    )
+
+    if title:
+        fig.suptitle(title, fontsize=13, y=1.02)
+    fig.tight_layout()
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, (ax_u, ax_l)
+
+
+def plot_bl_velocity_envelope_two_sides(
+    field_upper,  # BLFieldData
+    field_lower,  # BLFieldData
+    case_result,  # BoundaryLayerCaseResult
+    scale: float = 0.15,
+    cmap: str = "viridis",
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+    n_y_vis: int = 20,
+) -> Tuple[Figure, Axes]:
+    """Wrapped velocity envelope for both upper and lower paths.
+
+    Both paths are drawn on the same body outline.
+
+    Args:
+        field_upper: :class:`BLFieldData` for the upper path.
+        field_lower: :class:`BLFieldData` for the lower path.
+        case_result: :class:`BoundaryLayerCaseResult` for body geometry.
+        scale: Geometric scale factor.
+        cmap: Colormap.
+        title: Super-title.
+        output_path: Save path.
+        n_y_vis: Number of wall-normal layers to draw.
+
+    Returns:
+        ``(fig, ax)`` tuple.
+    """
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    # Draw upper side (body drawn here)
+    plot_bl_velocity_envelope(
+        field_upper,
+        surface_x=case_result.surface_x,
+        surface_y=case_result.surface_y,
+        panel_indices=case_result.upper.panel_indices,
+        scale=scale, cmap=cmap, ax=ax, show_body=True,
+        n_y_vis=n_y_vis,
+    )
+
+    # Draw lower side (body already drawn)
+    plot_bl_velocity_envelope(
+        field_lower,
+        surface_x=case_result.surface_x,
+        surface_y=case_result.surface_y,
+        panel_indices=case_result.lower.panel_indices,
+        scale=scale, cmap=cmap, ax=ax, show_body=False,
+        n_y_vis=n_y_vis,
+    )
+
+    if title:
+        ax.set_title(title, fontsize=11)
+    else:
+        ax.set_title(
+            f"Velocity envelope — {field_upper.profile_name}", fontsize=11,
+        )
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, ax
+
+
+# -------------------------------------------------------------------------
+# OpenFOAM comparison placeholder
+# -------------------------------------------------------------------------
+
+
+def plot_bl_of_comparison(
+    field,  # BLFieldData
+    of_field=None,  # Optional BLFieldData from OpenFOAM extraction
+    cmap: str = "RdBu_r",
+    ax: Optional[Axes] = None,
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+) -> Tuple[Figure, Axes]:
+    """RMS difference contour between panel-method BL and OpenFOAM.
+
+    This is a **placeholder** — the OpenFOAM field extraction is not yet
+    implemented.  When ``of_field`` is *None* the function plots only the
+    panel-method contour with a note that comparison data is unavailable.
+
+    Args:
+        field: :class:`BLFieldData` from the panel-method BL solver.
+        of_field: :class:`BLFieldData` extracted from an OpenFOAM
+            solution (not yet implemented — pass *None*).
+        cmap: Colormap for the difference plot.
+        ax: Existing axes.
+        title: Plot title.
+        output_path: Save path.
+
+    Returns:
+        ``(fig, ax)`` tuple.
+    """
+    if of_field is None:
+        # No OF data — just show the panel-method contour with a note
+        fig, ax = plot_bl_velocity_contour(
+            field, ax=ax, cmap="viridis",
+            title=title or f"BL velocity — {field.profile_name} (no OF data)",
+        )
+        ax.annotate(
+            "OpenFOAM comparison not available",
+            xy=(0.5, 0.95), xycoords="axes fraction",
+            ha="center", va="top", fontsize=10,
+            bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", alpha=0.9),
+        )
+        if output_path is not None:
+            fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        return fig, ax
+
+    # --- Actual comparison (future implementation) -------------------------
+    # Interpolate of_field onto the panel-method grid, compute RMS difference,
+    # and display as a contour.  For now this branch is unreachable.
+    M, Ny = field.u.shape
+    diff = field.u - of_field.u  # element-wise difference
+    rms = np.sqrt(np.mean(diff**2, axis=1))  # per-station RMS
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 4))
+    else:
+        fig = ax.get_figure()
+
+    s_edges = _cell_edges(field.s)
+    y_edge_grid = np.zeros((M + 1, Ny + 1), dtype=np.float64)
+    for i in range(M):
+        y_edge_grid[i] = _cell_edges(field.y[i])
+    y_edge_grid[M] = y_edge_grid[M - 1]
+
+    S_grid = np.broadcast_to(s_edges[:, np.newaxis], (M + 1, Ny + 1))
+
+    pcm = ax.pcolormesh(
+        S_grid, y_edge_grid, diff,
+        cmap=cmap, shading="flat", rasterized=True,
+    )
+    fig.colorbar(pcm, ax=ax, label=r"$u_{\mathrm{panel}} - u_{\mathrm{OF}}$ [m/s]",
+                 shrink=0.85, pad=0.02)
+
+    ax.set_xlabel("Arc length $s$ [m]")
+    ax.set_ylabel("Wall-normal $y$ [m]")
+    ax.set_xlim(field.s[0], field.s[-1])
+    ax.set_ylim(0, None)
+
+    if title:
+        ax.set_title(title, fontsize=11)
+    else:
+        ax.set_title(
+            f"Velocity difference — {field.profile_name} vs OF", fontsize=11,
+        )
+    fig.tight_layout()
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, ax
+
+
+# -------------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------------
+
+
+def _cell_edges(centers: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Compute cell-edge coordinates from cell centres for pcolormesh.
+
+    Given N centre values, returns N+1 edge values using midpoints
+    between adjacent centres, with linear extrapolation at the ends.
+
+    For a single centre value, returns edges at ±0.5 around it.
+    """
+    N = len(centers)
+    if N == 0:
+        return np.empty(1, dtype=np.float64)
+    if N == 1:
+        # Can't compute a spacing from neighbours; use unit half-width.
+        return np.array(
+            [centers[0] - 0.5, centers[0] + 0.5], dtype=np.float64,
+        )
+    edges = np.empty(N + 1, dtype=np.float64)
+    mid = 0.5 * (centers[:-1] + centers[1:])
+    edges[1:-1] = mid
+    edges[0] = centers[0] - 0.5 * (centers[1] - centers[0])
+    edges[-1] = centers[-1] + 0.5 * (centers[-1] - centers[-2])
+    return edges

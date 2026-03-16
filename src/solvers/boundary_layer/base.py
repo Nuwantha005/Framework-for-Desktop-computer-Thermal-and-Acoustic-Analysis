@@ -131,9 +131,15 @@ class BoundaryLayerSolver:
     # Public API
     # ------------------------------------------------------------------
 
-    def solve(self) -> BoundaryLayerResult:
+    def solve(self, K: float | None = None) -> BoundaryLayerResult:
         """
         Integrate the momentum-integral ODE forward along the path.
+
+        Args:
+            K: Velocity gradient dUe/ds at the stagnation point [1/s].
+                When provided, enables analytical stagnation patching
+                (``profile.stagnation_theta(nu, K)`` if available).
+                Otherwise falls back to the legacy ``initial_theta``.
 
         Returns:
             :class:`BoundaryLayerResult` with θ, δ*, cf, H, Re_θ arrays.
@@ -145,14 +151,18 @@ class BoundaryLayerSolver:
         s = self.arc_length
         Ue = self.edge_velocity
         nu = self.nu
+        K_val = K  # store locally to avoid shadowing
         K = len(s)
 
         # Pre-compute dUe/ds via finite differences
         dUe_ds = np.gradient(Ue, s)
 
-        # Skip stagnation: first station with |Ue| > 10 % of peak
-        i0 = self._find_start_index(Ue)
-        theta0 = self.profile.initial_theta(nu, Ue[i0])
+        # Find first downstream station with non-negligible Ue
+        i0 = self._find_start_index(s, Ue)
+
+        # Compute initial theta: prefer stagnation patching (Phase 3)
+        # if K and profile.stagnation_theta are available; else legacy.
+        theta0 = self._compute_initial_theta(K_val, Ue[i0])
 
         # Initialise output — NaN everywhere, fill only where solved
         theta = np.full(K, np.nan)
@@ -221,13 +231,34 @@ class BoundaryLayerSolver:
             raise ValueError("Edge velocity is zero everywhere — no BL to compute")
 
     @staticmethod
-    def _find_start_index(Ue: NDArray[np.float64]) -> int:
+    def _find_start_index(
+        s: NDArray[np.float64],
+        Ue: NDArray[np.float64],
+    ) -> int:
         """
-        First station with ``|Ue|`` exceeding 10 % of the peak.
+        First downstream station suitable for starting the BL march.
 
-        This skips the first few panels near the forward stagnation point
-        where Ue ≈ 0 and the momentum-integral ODE is singular.
+        With exact stagnation re-zeroing (Phase 2), the arc-length array
+        has s=0 at the interpolated stagnation point and the first panel
+        beyond it has s > 0 with a small but finite Ue.  We start at the
+        first such panel.
+
+        Falls back to the legacy 10% threshold if s[0] < 0 (pre-Phase-2
+        arc-length arrays that haven't been re-zeroed).
+
+        Args:
+            s: Arc-length array re-zeroed at stagnation (K,).
+            Ue: Edge velocity array (K,).
+
+        Returns:
+            Index of the starting station.
         """
+        # Phase 2 logic: start at first station with s > 0 and Ue > 0
+        downstream = np.where((s > 1e-14) & (Ue > 1e-14))[0]
+        if len(downstream) > 0:
+            return int(downstream[0])
+
+        # Legacy fallback: first station with |Ue| > 10% of peak
         Ue_abs = np.abs(Ue)
         Ue_max = Ue_abs.max()
         if Ue_max < 1e-14:
@@ -237,6 +268,32 @@ class BoundaryLayerSolver:
         if len(candidates) == 0:
             raise ValueError("No station with |Ue| >= 10 % of peak")
         return int(candidates[0])
+
+    def _compute_initial_theta(
+        self,
+        K: float | None,
+        Ue0: float,
+    ) -> float:
+        """Compute the initial momentum thickness at the starting station.
+
+        Tries the analytical stagnation-patching method first (Phase 3):
+        ``profile.stagnation_theta(nu, K)``.  If K is ``None`` or the
+        profile does not implement ``stagnation_theta``, falls back to the
+        legacy ``profile.initial_theta(nu, Ue0)``.
+
+        Args:
+            K: Velocity gradient at stagnation [1/s], or None.
+            Ue0: Edge velocity at the starting station [m/s].
+
+        Returns:
+            Initial θ₀ [m].
+        """
+        if K is not None and hasattr(self.profile, "stagnation_theta"):
+            try:
+                return self.profile.stagnation_theta(self.nu, K)
+            except NotImplementedError:
+                pass  # Profile doesn't support stagnation patching (e.g. PowerLaw)
+        return self.profile.initial_theta(self.nu, Ue0)
 
     def _closure_at(
         self,

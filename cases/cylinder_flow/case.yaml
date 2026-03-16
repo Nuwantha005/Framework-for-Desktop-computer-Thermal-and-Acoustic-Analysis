@@ -3,7 +3,7 @@ case_type: "parametric_2d"
 description: "Flow around cylinder - analytical validation case (Cp = 1 - 4*sin^2(theta))"
 
 freestream:
-  velocity: [0.1, 0.0, 0.0]
+  velocity: [1.0, 0.0, 0.0]
 
 components:
   - name: "cylinder"

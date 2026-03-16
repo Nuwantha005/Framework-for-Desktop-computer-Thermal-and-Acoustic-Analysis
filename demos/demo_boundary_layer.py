@@ -9,11 +9,15 @@ Identifies stagnation points via ``n · V∞``, splits the body into upper and
 lower surface streamlines, and computes BL quantities (cf, δ*, θ, H) along
 each path using one or more velocity profiles.
 
+When ``--reconstruct`` is given, also generates velocity-field visualizations:
+s-y contour plots, normalised y/δ contours, and wrapped velocity envelopes.
+
 Usage::
 
     python demos/demo_boundary_layer.py cases/rounded_square
     python demos/demo_boundary_layer.py cases/rounded_square --solver-type linear_source
     python demos/demo_boundary_layer.py cases/rounded_square --profiles blasius thwaites
+    python demos/demo_boundary_layer.py cases/rounded_square --reconstruct
     python demos/demo_boundary_layer.py cases/rounded_square --show-plots
 """
 
@@ -34,6 +38,10 @@ from visualization.bl_plots import (
     plot_bl_envelope,
     plot_bl_envelope_comparison,
     plot_bl_comparison,
+    plot_bl_velocity_contour_two_sides,
+    plot_bl_velocity_contour_normalized_two_sides,
+    plot_bl_velocity_envelope_two_sides,
+    plot_bl_of_comparison,
 )
 
 
@@ -68,6 +76,12 @@ def _print_summary(bl) -> None:
                 else:
                     print(f"      No transition ({tr.criterion_name})")
 
+            fld = path.fields.get(name)
+            if fld is not None:
+                print(f"      Reconstructed field: "
+                      f"{fld.u.shape[0]} stations × {fld.u.shape[1]} y-points, "
+                      f"δ_max = {np.nanmax(fld.delta):.3e} m")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -88,6 +102,9 @@ def main() -> int:
                         help="Kinematic viscosity override [m²/s]")
     parser.add_argument("--envelope-scale", type=float, default=None,
                         help="Envelope displacement scale factor")
+    parser.add_argument("--reconstruct", action="store_true",
+                        help="Run velocity-field reconstruction and generate "
+                             "contour/envelope plots")
     parser.add_argument("--show-plots", action="store_true",
                         help="Display plots interactively")
     parser.add_argument("--output-dir", type=Path, default=None,
@@ -124,11 +141,14 @@ def main() -> int:
     print(f"  BL profiles: {profiles}")
     if transition:
         print(f"  Transition model: {transition}")
+    if args.reconstruct:
+        print("  Velocity-field reconstruction: enabled")
 
     bl = runner.run(
         profiles=profiles,
         nu=args.nu,
         transition_model=transition,
+        reconstruct=args.reconstruct,
     )
 
     print(f"\n  ν = {bl.nu:.3e} m²/s")
@@ -153,7 +173,7 @@ def main() -> int:
         output_path=output_dir / "bl_lines.png",
     )
     plt.close("all")
-    print("  ✓ bl_lines.png")
+    print("  + bl_lines.png")
 
     # Per-side multi-panel plots
     for side_name, path in bl.sides.items():
@@ -163,10 +183,10 @@ def main() -> int:
             output_path=output_dir / f"bl_lines_{side_name}.png",
         )
         plt.close("all")
-    print("  ✓ bl_lines_upper.png, bl_lines_lower.png")
+    print("  + bl_lines_upper.png, bl_lines_lower.png")
 
     # Envelope comparison (cf and δ*)
-    for qty, label in [("cf", "cf"), ("delta_star", "δ*")]:
+    for qty, label in [("cf", "cf"), ("delta_star", "delta_star")]:
         plot_bl_envelope_comparison(
             bl,
             quantity=qty,
@@ -175,7 +195,7 @@ def main() -> int:
             output_path=output_dir / f"bl_{qty}_envelope.png",
         )
         plt.close("all")
-    print("  ✓ bl_cf_envelope.png, bl_delta_star_envelope.png")
+    print("  + bl_cf_envelope.png, bl_delta_star_envelope.png")
 
     # Full comparison figure
     plot_bl_comparison(
@@ -185,7 +205,7 @@ def main() -> int:
         output_path=output_dir / "bl_comparison.png",
     )
     plt.close("all")
-    print("  ✓ bl_comparison.png")
+    print("  + bl_comparison.png")
 
     # Individual profile envelope plots
     for name in bl.profile_names:
@@ -199,7 +219,59 @@ def main() -> int:
             output_path=output_dir / f"bl_cf_envelope_{safe}.png",
         )
         plt.close("all")
-    print("  ✓ Individual profile envelopes")
+    print("  + Individual profile envelopes")
+
+    # ------------------------------------------------------------------
+    # 4. Velocity-field plots (only when --reconstruct is given)
+    # ------------------------------------------------------------------
+    if args.reconstruct:
+        for name in bl.profile_names:
+            safe = name.lower().replace(" ", "_").replace("/", "_").replace("-", "_")
+            field_u = bl.upper.fields.get(name)
+            field_l = bl.lower.fields.get(name)
+            if field_u is None or field_l is None:
+                print(f"  (skipping velocity plots for {name} — "
+                      f"reconstruction unavailable)")
+                continue
+
+            # s-y velocity contour (both sides)
+            plot_bl_velocity_contour_two_sides(
+                field_u, field_l, cmap="viridis",
+                title=f"BL velocity contour — {name} — {case.name}",
+                output_path=output_dir / f"bl_vel_contour_{safe}.png",
+            )
+            plt.close("all")
+            print(f"  + bl_vel_contour_{safe}.png")
+
+            # Normalised s-(y/δ) contour
+            plot_bl_velocity_contour_normalized_two_sides(
+                field_u, field_l, cmap="viridis",
+                title=f"Normalised BL velocity — {name} — {case.name}",
+                output_path=output_dir / f"bl_vel_normalised_{safe}.png",
+            )
+            plt.close("all")
+            print(f"  + bl_vel_normalised_{safe}.png")
+
+            # Wrapped velocity envelope
+            plot_bl_velocity_envelope_two_sides(
+                field_u, field_l, bl,
+                scale=envelope_scale,
+                cmap="viridis",
+                title=f"Velocity envelope — {name} — {case.name}",
+                output_path=output_dir / f"bl_vel_envelope_{safe}.png",
+            )
+            plt.close("all")
+            print(f"  + bl_vel_envelope_{safe}.png")
+
+            # OpenFOAM comparison placeholder
+            plot_bl_of_comparison(
+                field_u,
+                of_field=None,
+                title=f"OF comparison — {name} upper — {case.name}",
+                output_path=output_dir / f"bl_of_compare_{safe}.png",
+            )
+            plt.close("all")
+            print(f"  + bl_of_compare_{safe}.png (placeholder)")
 
     if args.show_plots:
         plt.show()

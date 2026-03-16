@@ -29,8 +29,10 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from numpy.typing import NDArray
 
 from .base import VelocityProfile, ProfileClosureData
+from .tables import falkner_skan_table
 
 
 # Tabulated Falkner-Skan results (β → H, S)
@@ -113,3 +115,80 @@ class FalknerSkanProfile(VelocityProfile):
             raise ValueError(f"Ue0 must be positive, got {Ue0}")
         s0 = nu / Ue0
         return 0.664 * math.sqrt(nu * s0 / Ue0)
+
+    def stagnation_theta(self, nu: float, K: float) -> float:
+        """
+        Hiemenz (β = 1) stagnation patching: θ_stag = √(0.08547 · ν / K).
+
+        At a 2-D stagnation point the flow is the Hiemenz solution
+        (Falkner-Skan with β = 1, m = 1).  Substituting Ue = K·s into
+        the momentum integral with the exact Hiemenz closure (H = 2.216,
+        f''(0) = 1.23259) and applying L'Hôpital's rule gives
+        C = 2·f''(0)·(θ/δ)² / [shape-integral] = 0.08547.
+
+        Args:
+            nu: Kinematic viscosity [m²/s].
+            K: Velocity gradient dUe/ds at stagnation [1/s].
+
+        Returns:
+            Stagnation momentum thickness θ_stag [m].
+        """
+        self._validate_stagnation_args(nu, K)
+        return math.sqrt(0.08547 * nu / K)
+
+    # ------------------------------------------------------------------
+    # Post-processing: velocity field reconstruction
+    # ------------------------------------------------------------------
+
+    def compute_delta(self, theta: float, H: float) -> float:
+        """
+        Falkner-Skan δ₉₉ from θ and H.
+
+        Inverts H → β via the tabulated ODE solutions, then
+        L = θ / I₂(β),  δ₉₉ = η₉₉(β) · L.
+
+        Args:
+            theta: Momentum thickness θ [m].
+            H: Shape factor δ*/θ.
+
+        Returns:
+            Boundary layer thickness δ₉₉ [m].
+        """
+        tbl = falkner_skan_table()
+        try:
+            c = tbl.constants_from_H(H)
+        except ValueError:
+            # H outside tabulated range — fall back to Blasius-like estimate
+            c = tbl.constants(0.0)
+        L = theta / c.I_2
+        return c.eta_99 * L
+
+    def reconstruct_velocity(
+        self,
+        y: NDArray[np.float64],
+        theta: float,
+        H: float,
+        Ue: float,
+    ) -> NDArray[np.float64]:
+        """
+        Reconstruct u(y) from the Falkner-Skan similarity profile.
+
+        Inverts H → β, then u(y) = Ue · f'_β(y/L)  where L = θ/I₂(β).
+
+        Args:
+            y: Wall-normal coordinates [m], shape (Ny,).
+            theta: Momentum thickness θ [m].
+            H: Shape factor δ*/θ.
+            Ue: Edge velocity [m/s].
+
+        Returns:
+            Velocity u(y) [m/s], shape (Ny,).
+        """
+        tbl = falkner_skan_table()
+        try:
+            c = tbl.constants_from_H(H)
+        except ValueError:
+            c = tbl.constants(0.0)
+        L = theta / c.I_2
+        eta = np.asarray(y, dtype=np.float64) / L
+        return Ue * tbl.fprime(c.beta, eta)

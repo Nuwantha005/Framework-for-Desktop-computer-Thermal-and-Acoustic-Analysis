@@ -194,23 +194,34 @@ def _interpolate_stagnation(
     s: NDArray[np.float64],
     Vt: NDArray[np.float64],
 ) -> float:
-    """Find the exact arc-length of the stagnation point via interpolation.
+    """Find the exact arc-length of the **forward** stagnation point.
 
-    Looks for the location where the signed tangential velocity Vt changes
-    sign.  If a sign change is found between adjacent panels, linearly
-    interpolates to find the exact s where Vt = 0.  If no sign change
-    exists (e.g. the stagnation point coincides with the first panel), falls
-    back to the location of minimum |Vt|.
+    The path is assumed to start at the forward stagnation panel (identified
+    by ``argmin(n · V̂∞)`` in :meth:`_find_stagnation_points`) and end at
+    the rear stagnation.  The forward stagnation point is therefore near
+    the **beginning** of the path.
+
+    Strategy:
+
+    1. Search only the **first half** of the path for a Vt sign change.
+       If found, linearly interpolate to the exact zero crossing.
+    2. Otherwise, find ``argmin(|Vt|)`` in the first half of the path
+       (the forward stagnation region, not the rear).
 
     Args:
         s: Raw arc-length array (K,), monotonically increasing.
         Vt: Signed tangential velocity along the path (K,).
 
     Returns:
-        Arc-length s_stag at the interpolated stagnation point.
+        Arc-length s_stag at the interpolated forward stagnation point.
     """
-    # Look for sign changes in Vt
-    signs = np.sign(Vt)
+    K = len(s)
+    # Limit the search to the first half of the path so we never
+    # accidentally pick the rear stagnation region.
+    half = max(K // 2, 2)
+
+    # Look for sign changes in the first half
+    signs = np.sign(Vt[:half])
     sign_changes = np.where(np.diff(signs) != 0)[0]
 
     if len(sign_changes) > 0:
@@ -225,8 +236,8 @@ def _interpolate_stagnation(
         else:
             return float(0.5 * (s[i] + s[i + 1]))
     else:
-        # No sign change — stagnation is at minimum |Vt|
-        i_min = int(np.argmin(np.abs(Vt)))
+        # No sign change — stagnation is at minimum |Vt| in the first half
+        i_min = int(np.argmin(np.abs(Vt[:half])))
         return float(s[i_min])
 
 

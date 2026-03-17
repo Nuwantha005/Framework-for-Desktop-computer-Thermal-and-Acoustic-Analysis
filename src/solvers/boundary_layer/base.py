@@ -160,6 +160,15 @@ class BoundaryLayerSolver:
         # Find first downstream station with non-negligible Ue
         i0 = self._find_start_index(s, Ue)
 
+        # Correct dUe/ds at the start station: np.gradient uses a central
+        # difference which, when i0 > 0, averages across the stagnation
+        # plateau (s < 0 panels).  Replace with a one-sided forward
+        # difference so the BL sees the true velocity gradient at i0.
+        if i0 > 0 and i0 + 1 < K:
+            ds_fwd = s[i0 + 1] - s[i0]
+            if ds_fwd > 1e-30:
+                dUe_ds[i0] = (Ue[i0 + 1] - Ue[i0]) / ds_fwd
+
         # Compute initial theta: prefer stagnation patching (Phase 3)
         # if K and profile.stagnation_theta are available; else legacy.
         theta0 = self._compute_initial_theta(K_val, Ue[i0])

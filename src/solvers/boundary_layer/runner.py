@@ -207,6 +207,12 @@ def _interpolate_stagnation(
        If found, linearly interpolate to the exact zero crossing.
     2. Otherwise, find ``argmin(|Vt|)`` in the first half of the path
        (the forward stagnation region, not the rear).
+    3. When the minimum is at index 0 (path boundary), refine with a
+       3-point parabolic fit on ``|Vt|`` vs ``s``, clamped to
+       ``[s[0], s[1]]``.  This resolves the sub-panel stagnation
+       location when the true stagnation falls between two panels
+       (e.g. symmetric bodies where both flanking panels have
+       identical ``|Vt|``).
 
     Args:
         s: Raw arc-length array (K,), monotonically increasing.
@@ -236,8 +242,35 @@ def _interpolate_stagnation(
         else:
             return float(0.5 * (s[i] + s[i + 1]))
     else:
-        # No sign change — stagnation is at minimum |Vt| in the first half
+        # No sign change — stagnation is at minimum |Vt| in the first half.
         i_min = int(np.argmin(np.abs(Vt[:half])))
+
+        # When the minimum is at the path boundary (index 0), the true
+        # stagnation may lie *between* index 0 and index 1 — e.g. on a
+        # symmetric cylinder where both flanking panels have identical
+        # |Vt|.  A 3-point parabolic fit on |Vt| vs s resolves this
+        # sub-panel location.
+        #
+        # Two sub-cases:
+        #   a > 0 (concave up): minimum between s[0] and s[1] — the
+        #       stagnation falls between the first two panels.  Clamp
+        #       to [s[0], s[1]].
+        #   a <= 0 (concave down / linear): |Vt| is monotonically
+        #       increasing from the start — the stagnation is at or
+        #       before the first panel centre.  Shift back by half the
+        #       first panel spacing (the geometric distance from a
+        #       panel centre to its upstream node).
+        if i_min == 0 and half >= 3:
+            absVt = np.abs(Vt[:3])
+            coeffs = np.polyfit(s[:3], absVt, 2)
+            a, b, _c = coeffs
+            if a > 0:
+                s_min = -b / (2.0 * a)
+                return float(np.clip(s_min, s[0], s[1]))
+            else:
+                # Stagnation is before the first panel centre.
+                ds = s[1] - s[0]
+                return float(s[0] - ds / 2.0)
         return float(s[i_min])
 
 

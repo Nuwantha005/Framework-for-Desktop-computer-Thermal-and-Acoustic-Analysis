@@ -253,7 +253,11 @@ def _compute_K(
 
         K = Σ(Ue_i · s_i) / Σ(s_i²)
 
-    where the sum is taken over panels with |Ue| < threshold_fraction × max|Ue|.
+    Panels are collected by walking **forward** from the first downstream
+    station (s > 0) and stopping as soon as Ue exceeds
+    ``threshold_fraction × max(Ue)``.  This sequential scan ensures only
+    panels in the forward-stagnation region are used, avoiding
+    contamination from the rear stagnation where Ue is also small.
 
     Args:
         s: Arc-length re-zeroed at stagnation (K,).  May contain negative
@@ -265,8 +269,7 @@ def _compute_K(
 
     Returns:
         Positive velocity gradient K [1/s].  If the fit fails (e.g. too few
-        points), falls back to the simple forward-difference Ue[1]/s[1] at
-        the first post-stagnation panel.
+        points), falls back to the first ``min_points`` downstream panels.
     """
     Ue_max = float(np.max(Ue))
     if Ue_max < 1e-14:
@@ -274,29 +277,31 @@ def _compute_K(
 
     threshold = threshold_fraction * Ue_max
 
-    # Select near-stagnation panels with positive s (downstream of stagnation)
-    mask = (Ue < threshold) & (s > 1e-14)
-    s_fit = s[mask]
-    Ue_fit = Ue[mask]
+    # Walk forward from the first downstream panel, collecting while
+    # Ue stays below the threshold.  Stop at the first violation.
+    downstream = np.where(s > 1e-14)[0]
+    if len(downstream) == 0:
+        return float(Ue_max / (s[-1] - s[0])) if s[-1] > s[0] else 1.0
 
-    # If not enough points from the threshold, take the first `min_points`
-    # downstream panels instead
-    if len(s_fit) < min_points:
-        downstream = np.where(s > 1e-14)[0]
-        if len(downstream) >= min_points:
-            sel = downstream[:min_points]
-        elif len(downstream) > 0:
-            sel = downstream
+    fit_indices: list[int] = []
+    for idx in downstream:
+        if Ue[idx] < threshold:
+            fit_indices.append(int(idx))
         else:
-            # All panels are at or before stagnation — very unusual
-            return float(Ue_max / (s[-1] - s[0])) if s[-1] > s[0] else 1.0
-        s_fit = s[sel]
-        Ue_fit = Ue[sel]
+            break  # left the forward-stagnation region
+
+    # Fallback: if the threshold is too tight and catches fewer than
+    # min_points, take the first min_points downstream panels instead.
+    if len(fit_indices) < min_points:
+        n = min(min_points, len(downstream))
+        fit_indices = [int(downstream[j]) for j in range(n)]
+
+    s_fit = s[fit_indices]
+    Ue_fit = Ue[fit_indices]
 
     # Forced-through-origin regression: K = Σ(Ue·s) / Σ(s²)
     denom = float(np.sum(s_fit**2))
     if denom < 1e-30:
-        # Degenerate: all points at the same s
         return 1.0
     K = float(np.sum(Ue_fit * s_fit) / denom)
     return max(K, 1e-10)  # K must be positive

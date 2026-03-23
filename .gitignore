@@ -6,6 +6,7 @@ AGENTS.md
 .ignore
 opencode.json
 **/of_case/
+**/fluent_case/
 /site
 .github
 *.pyc

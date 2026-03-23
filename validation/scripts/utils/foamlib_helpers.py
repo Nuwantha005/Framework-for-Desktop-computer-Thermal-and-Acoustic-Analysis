@@ -74,9 +74,50 @@ def set_snappy_levels_per_component(
     Args:
         case_dir: OpenFOAM case directory
         component_levels: Dict[component_name] = {"surface_level": N, "feature_level": M}
+    
+    Note:
+        Performs flexible matching to handle component name variations between
+        config and OpenFOAM files (e.g., "cylinder" matching "Cylinder_Flow").
+        Uses multiple strategies: exact match, case-insensitive match, and 
+        substring containment check.
     """
     case = FoamCase(case_dir)
     snappy = case.file("system/snappyHexMeshDict")
+    
+    def normalize_name(name: str) -> str:
+        """Normalize name for matching: lowercase, remove underscores/spaces."""
+        return name.lower().replace('_', '').replace(' ', '')
+    
+    def find_matching_level(target_name: str, component_levels: Dict) -> Optional[Dict]:
+        """
+        Find matching component levels using multiple matching strategies.
+        
+        Strategies (in order):
+        1. Exact match
+        2. Normalized match (case-insensitive, no spaces/underscores)
+        3. Substring containment (config name contained in target, or vice versa)
+        
+        Returns:
+            Dict with 'surface_level' and 'feature_level', or None if no match
+        """
+        # Strategy 1: Exact match
+        if target_name in component_levels:
+            return component_levels[target_name]
+        
+        # Strategy 2: Normalized match
+        target_norm = normalize_name(target_name)
+        for key, val in component_levels.items():
+            if normalize_name(key) == target_norm:
+                return val
+        
+        # Strategy 3: Substring containment
+        # This handles cases like "cylinder" matching "Cylinder_Flow"
+        for key, val in component_levels.items():
+            key_norm = normalize_name(key)
+            if key_norm in target_norm or target_norm in key_norm:
+                return val
+        
+        return None
     
     with snappy as f:
         # Update features - match by component name in filename
@@ -85,16 +126,21 @@ def set_snappy_levels_per_component(
             # Feature file is like "ComponentName.eMesh"
             filename = entry.get("file", "")
             comp_name = filename.replace(".eMesh", "")
-            if comp_name in component_levels:
-                entry["level"] = component_levels[comp_name].get("feature_level", 2)
+            
+            levels = find_matching_level(comp_name, component_levels)
+            if levels:
+                entry["level"] = levels.get("feature_level", 2)
+        
         f["castellatedMeshControls", "features"] = features
         
         # Update refinementSurfaces
         ref = dict(f["castellatedMeshControls", "refinementSurfaces"])
         for name, sub in ref.items():
-            if name in component_levels:
-                level = component_levels[name].get("surface_level", 2)
+            levels = find_matching_level(name, component_levels)
+            if levels:
+                level = levels.get("surface_level", 2)
                 sub["level"] = [level, level]
+        
         f["castellatedMeshControls", "refinementSurfaces"] = ref
 
 

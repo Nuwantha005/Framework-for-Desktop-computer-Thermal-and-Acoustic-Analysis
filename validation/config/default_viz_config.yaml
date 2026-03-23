@@ -6,7 +6,7 @@
 # Global figure settings
 figure:
   dpi: 300
-  format: ["png", "pdf"] # Save in multiple formats
+  format: ["png"] # Save in multiple formats
   style: "seaborn-v0_8-paper" # Matplotlib style
   font_size: 11
 

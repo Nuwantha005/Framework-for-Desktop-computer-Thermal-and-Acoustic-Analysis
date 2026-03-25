@@ -35,16 +35,16 @@ Both files are exported as ASCII files. Example for their contens are given belo
 **filed_data:**
 ```
 nodenumber,    x-coordinate,    y-coordinate,        pressure,      x-velocity,      y-velocity
-         1,-4.158276732E-16,-8.000000000E+00,-2.188333742E-02, 1.000000000E+00, 0.000000000E+00
-         2, 2.770342647E-02,-8.000000000E+00,-2.206055188E-02, 1.005299157E+00, 0.000000000E+00
-         3, 5.580152667E-02,-8.000000000E+00,-2.223045663E-02, 1.005445430E+00, 0.000000000E+00
+         1, 8.427639012E-17,-7.500000000E-01,-3.011805813E-01, 1.228020079E+00,-2.323784826E-01
+         2,-2.179031490E-02,-7.496833880E-01,-3.005723495E-01, 1.226030280E+00,-2.405907942E-01
+         3, 3.256109368E-02,-7.492928501E-01,-3.016362810E-01, 1.230227082E+00,-2.211259240E-01
 ```
 **wall_data:**
 ```
-nodenumber,    x-coordinate,    y-coordinate,      wall-shear
-         1,-7.753743520E-03,-4.999398758E-01, 1.348020168E-03
-         2, 8.036596938E-03,-4.999354089E-01, 1.711057191E-03
-         3,-2.361364641E-02,-4.994420844E-01, 5.989121072E-04
+nodenumber,    x-coordinate,    y-coordinate,        pressure,      wall-shear
+         1, 2.220446049E-16,-5.000000000E-01,-4.862246001E-01, 1.522855383E-03
+         2, 1.560226457E-02,-4.997565101E-01,-4.530828855E-01, 1.778663425E-03
+         3,-1.595709488E-02,-4.997453063E-01,-5.283129445E-01, 8.964168236E-04
 ```
 ## Calculations
 Note that all the boundary layer sovlers ends before reaching rear stagnation point. Therefore, we only compare the velocities and other parameters only in the places where the BL solver results exist.
@@ -56,4 +56,24 @@ Critical Note: We need to use the mesh points from boundary layer solver as the 
 
 The boundary layer solver returns the **Tangential Velocity**. Fluent gives the velocity vector. We have to use the specific panel, related to the boundary layer point $s$ and convert that fluent velocity vector into the tangential component. Ideally, it should be tangential anyway. We can use the normal vector of the panel in question for this purpose.
 
-###
+> The next few calculations are specific about how to extract quantities from fluent dataset.
+### Edge velocity Calculation
+We assume incompressible flow, and use the static pressure at the wall to calculate the edge velocity using,
+$$U_e = \sqrt{\frac{2(P_{0,\infty} - P_{wall})}{\rho}}$$
+Where $P_{0,\infty}$ is the freestream pressure that can be fount in the case file.
+
+### Boundary Layer Thickness
+For the selected panel, we march along the normal of the panel untill the tangential velocity magnitude becomes,
+$$\delta(s)\approx 0.99 U_e$$
+
+### Skin Friction Coefficint
+Since we have data for wall shear stress at wall from fluent, we can calculate
+$$C_f = \frac{\tau_w}{\frac{1}{2} \rho U_\infty^2}$$
+
+### Seperation Point
+Seperation occurs when,
+$$\tau_w = 0$$
+So we can march along the wall and find out the arc length at which this happens. All the profiles in the boundary layer solver ends at the seperation point.
+
+## Arc Length Calculations
+The boundary layer solver has 2 seperate streamlines for these 2D cases, and it finds the respective panels, divides them into correct streamline, solvers seperately and gives results seperately. Therefore, when dealing with the wall dataset from fluent, we have to use the coordinates of those panels and find the correct streamlines a given data point belongs to. Only after that we can do the calculations.

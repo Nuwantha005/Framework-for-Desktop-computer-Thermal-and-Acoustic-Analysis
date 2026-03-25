@@ -361,6 +361,16 @@ def main() -> int:
             plt.close("all")
             print(f"  + fluent_comparison/bl_fluent_wall_{safe_pname}.png")
 
+            # Combined Envelope comparison plot
+            plot_bl_velocity_envelope_comparison(
+                bl, comp_result,
+                profile_name=pname,
+                title=f"Velocity difference envelope — {pname} vs Fluent — {case.name}",
+                output_path=fluent_dir / f"bl_fluent_envelope_{safe_pname}.png",
+            )
+            plt.close("all")
+            print(f"  + fluent_comparison/bl_fluent_envelope_{safe_pname}.png")
+
             # Individual side comparisons
             for side in ["upper", "lower"]:
                 field = bl.sides[side].fields.get(pname)
@@ -382,18 +392,6 @@ def main() -> int:
                     )
                     plt.close("all")
                     print(f"  + fluent_comparison/bl_fluent_normalized_{side}_{safe_pname}.png")
-
-                    # Envelope comparison plot
-                    plot_bl_velocity_envelope_comparison(
-                        field, fluent_field,
-                        surface_x=bl.surface_x,
-                        surface_y=bl.surface_y,
-                        panel_indices=bl.sides[side].panel_indices,
-                        title=f"{side.capitalize()} envelope — {pname} vs Fluent — {case.name}",
-                        output_path=fluent_dir / f"bl_fluent_envelope_{side}_{safe_pname}.png",
-                    )
-                    plt.close("all")
-                    print(f"  + fluent_comparison/bl_fluent_envelope_{side}_{safe_pname}.png")
 
             # Comprehensive metrics report
             plot_bl_comparison_report(

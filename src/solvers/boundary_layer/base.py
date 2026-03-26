@@ -56,7 +56,8 @@ class BoundaryLayerResult:
         s: Arc-length from forward stagnation [m], shape (K,).
         theta: Momentum thickness θ(s) [m], shape (K,).
         delta_star: Displacement thickness δ*(s) [m], shape (K,).
-        cf: Skin-friction coefficient cf(s), shape (K,).
+        cf: Freestream-normalized skin-friction coefficient
+            C_f(s) = tau_w / (0.5 rho U_ref^2), shape (K,).
         H: Shape factor H(s) = δ*/θ, shape (K,).
         Re_theta: Momentum-thickness Reynolds number Re_θ(s), shape (K,).
         Ue: Edge velocity used for the computation [m/s], shape (K,).
@@ -124,6 +125,7 @@ class BoundaryLayerSolver:
     arc_length: NDArray[np.float64]
     nu: float
     profile: VelocityProfile
+    u_ref: float = 1.0
     rtol: float = 1e-6
     atol: float = 1e-9
 
@@ -185,7 +187,8 @@ class BoundaryLayerSolver:
         theta[i0] = theta0
         H_arr[i0] = cl0.H
         delta_star[i0] = cl0.H * theta0
-        cf[i0] = 2.0 * cl0.cf_2
+        cf_local_0 = 2.0 * cl0.cf_2
+        cf[i0] = cf_local_0 * (Ue[i0] / self.u_ref) ** 2
         Re_theta_arr[i0] = Ue[i0] * theta0 / nu
 
         # Forward march from i0 → K-1
@@ -206,7 +209,8 @@ class BoundaryLayerSolver:
                 cl = self._closure_at(theta[idx], Ue[idx], dUe_ds[idx])
                 H_arr[idx] = cl.H
                 delta_star[idx] = cl.H * theta[idx]
-                cf[idx] = 2.0 * cl.cf_2
+                cf_local = 2.0 * cl.cf_2
+                cf[idx] = cf_local * (Ue[idx] / self.u_ref) ** 2
                 Re_theta_arr[idx] = Ue[idx] * theta[idx] / nu
 
         return BoundaryLayerResult(
@@ -236,6 +240,8 @@ class BoundaryLayerSolver:
             raise ValueError("Need at least 3 arc-length stations")
         if self.nu <= 0:
             raise ValueError(f"Kinematic viscosity must be positive, got {self.nu}")
+        if self.u_ref <= 0:
+            raise ValueError(f"Reference velocity u_ref must be positive, got {self.u_ref}")
         if np.all(np.abs(self.edge_velocity) < 1e-14):
             raise ValueError("Edge velocity is zero everywhere — no BL to compute")
 

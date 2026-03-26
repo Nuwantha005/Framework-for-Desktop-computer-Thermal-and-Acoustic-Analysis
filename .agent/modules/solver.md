@@ -17,7 +17,7 @@
 - `solvers/panel2d/influences/doublet.py` — `compute_doublet_potential_influence(point, start, end) → coeff`; `compute_doublet_influence_matrix(mesh) → C`; `compute_source_potential_matrix(mesh) → B`; `compute_doublet_velocity_influence(point, start, end) → (u, w)`
 - `solvers/panel2d/influences/linear_doublet.py` — `compute_linear_doublet_potential_influence(point, start, end) → (Φ_a, Φ_b)` (K&P Eqs. 11.114/11.115); `compute_linear_source_potential_influence(point, start, end) → (B_a, B_b)`; `compute_linear_doublet_influence_matrix(mesh) → C` (N,N node-accumulation); `compute_linear_source_potential_matrix(mesh) → B` (N,N); `compute_linear_doublet_velocity_influence(point, start, end) → ((u_a,w_a),(u_b,w_b))`; `compute_linear_doublet_velocity_field(points, mesh, mu) → (M,2)`
 - `solvers/boundary_layer/__init__.py` — package exports for BL solver and field reconstruction
-- `solvers/boundary_layer/base.py` — `BoundaryLayerSolver` (Von Kármán integral ODE solver), `BoundaryLayerResult` (dataclass container for θ, δ*, cf, H, Re_θ); accepts optional `K` for stagnation patching
+- `solvers/boundary_layer/base.py` — `BoundaryLayerSolver` (Von Kármán integral ODE solver), `BoundaryLayerResult` (dataclass container for θ, δ*, C_f∞, H, Re_θ); accepts optional `K` for stagnation patching
 - `solvers/boundary_layer/runner.py` — `BoundaryLayerRunner` (orchestration), `BoundaryLayerPathResult`, `BoundaryLayerCaseResult`; exact stagnation detection via `_interpolate_stagnation()`, velocity gradient `_compute_K()`, optional velocity-field reconstruction
 - `solvers/boundary_layer/field.py` — `BLFieldData` (reconstructed 2-D velocity field), `reconstruct_bl_field()` (batch reconstruction from integral results + profile)
 - `solvers/boundary_layer/transition.py` — `michel_criterion()`, `en_criterion()`, `TransitionResult` (frozen dataclass)
@@ -44,7 +44,7 @@
 - `ComparisonResult.solver_results` — returns only panel-method results
 - `extract_openfoam_reference(case, of_case_dir)` → `SolverResult(is_reference=True)` with OF surface data
 - `BoundaryLayerSolver(edge_velocity, arc_length, nu, profile)` → `.solve(K=None)` → `BoundaryLayerResult`
-- `BoundaryLayerResult`: dataclass with `.s`, `.theta`, `.delta_star`, `.cf`, `.H`, `.Re_theta`, `.Ue`, `.transition_s`, `.profile_name`, `.converged`
+- `BoundaryLayerResult`: dataclass with `.s`, `.theta`, `.delta_star`, `.cf` (freestream-normalized `C_f∞`), `.H`, `.Re_theta`, `.Ue`, `.transition_s`, `.profile_name`, `.converged`
 - `BoundaryLayerRunner(case, solver)` → `.run(profiles, reconstruct=False, ...)` → `BoundaryLayerCaseResult`
 - `BoundaryLayerPathResult`: `.results` (profile→result), `.fields` (profile→BLFieldData), `.K`, `.transitions`
 - `BLFieldData`: reconstructed 2-D field (`.s`, `.y`, `.u`, `.delta`, `.Ue`, `.theta`, `.H`, `.profile_name`)

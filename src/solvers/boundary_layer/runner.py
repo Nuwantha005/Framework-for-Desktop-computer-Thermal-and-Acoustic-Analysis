@@ -488,6 +488,7 @@ class BoundaryLayerRunner:
                     arc_length=path.s,
                     nu=nu,
                     profile=profile,
+                    u_ref=float(np.linalg.norm(self.solver.v_inf_vector[:2])),
                 )
                 result = bl_solver.solve(K=path.K)
                 path.results[result.profile_name] = result

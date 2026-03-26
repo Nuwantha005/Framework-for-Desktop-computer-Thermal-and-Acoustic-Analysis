@@ -51,6 +51,9 @@ from visualization.bl_plots import (
     plot_bl_velocity_envelope_comparison,
     plot_bl_velocity_contour_normalized_comparison,
     plot_bl_comparison_report,
+    plot_bl_fluent_envelope_side_by_side,
+    plot_bl_fluent_contour_side_by_side,
+    plot_bl_fluent_contour_normalized_side_by_side,
 )
 
 
@@ -401,6 +404,40 @@ def main() -> int:
             )
             plt.close("all")
             print(f"  + fluent_comparison/bl_fluent_report_{safe_pname}.png")
+
+            # --- Side-by-side Absolute Velocity Comparisons ---
+            
+            # Side-by-side Envelope
+            plot_bl_fluent_envelope_side_by_side(
+                bl, comp_result,
+                profile_name=pname,
+                title=f"Absolute Velocity Envelope — {pname} vs Fluent — {case.name}",
+                output_path=fluent_dir / f"bl_fluent_envelope_abs_{safe_pname}.png",
+            )
+            plt.close("all")
+            print(f"  + fluent_comparison/bl_fluent_envelope_abs_{safe_pname}.png")
+
+            for side in ["upper", "lower"]:
+                field = bl.sides[side].fields.get(pname)
+                fluent_field = comp_result.sides[side]
+                if field is not None and fluent_field is not None:
+                    # Side-by-side Contour
+                    plot_bl_fluent_contour_side_by_side(
+                        field, fluent_field,
+                        title=f"{side.capitalize()} Absolute Velocity — {pname} vs Fluent — {case.name}",
+                        output_path=fluent_dir / f"bl_fluent_contour_abs_{side}_{safe_pname}.png",
+                    )
+                    plt.close("all")
+                    print(f"  + fluent_comparison/bl_fluent_contour_abs_{side}_{safe_pname}.png")
+
+                    # Side-by-side Normalized Contour
+                    plot_bl_fluent_contour_normalized_side_by_side(
+                        field, fluent_field,
+                        title=f"{side.capitalize()} Normalized Velocity — {pname} vs Fluent — {case.name}",
+                        output_path=fluent_dir / f"bl_fluent_normalized_abs_{side}_{safe_pname}.png",
+                    )
+                    plt.close("all")
+                    print(f"  + fluent_comparison/bl_fluent_normalized_abs_{side}_{safe_pname}.png")
 
     if args.show_plots:
         plt.show()

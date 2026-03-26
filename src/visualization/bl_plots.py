@@ -1344,6 +1344,91 @@ def _draw_envelope_comparison_quads(
         ax.plot(env_x_fl, env_y_fl, "k--", lw=1.2, zorder=5)
 
 
+def _draw_envelope_absolute_quads(
+    ax: Axes,
+    field,  # For geometry (s, y)
+    u_arr: NDArray[np.float64], # The velocity data to color
+    delta_arr: NDArray[np.float64], # The delta to draw the line
+    surface_x: NDArray[np.float64],
+    surface_y: NDArray[np.float64],
+    panel_indices: List[int],
+    normals: NDArray[np.float64],
+    scale: float,
+    delta_max: float,
+    cmap_obj,
+    norm: mcolors.Normalize,
+    n_y_vis: int,
+    draw_delta_line: bool = True,
+    line_style: str = "k-",
+) -> None:
+    """Draw velocity envelope quads for one BL path using absolute velocity."""
+    M_field, Ny = field.u.shape
+    if M_field < 2:
+        return
+
+    # Build geometry mapping
+    path_s = np.zeros(len(panel_indices))
+    path_x = surface_x[panel_indices]
+    path_y = surface_y[panel_indices]
+    ds = np.sqrt(np.diff(path_x) ** 2 + np.diff(path_y) ** 2)
+    path_s[1:] = np.cumsum(ds)
+    path_normals = normals[panel_indices]
+
+    field_px = np.interp(field.s, path_s - path_s[0] + field.s[0], path_x)
+    field_py = np.interp(field.s, path_s - path_s[0] + field.s[0], path_y)
+    field_nx = np.interp(field.s, path_s - path_s[0] + field.s[0], path_normals[:, 0])
+    field_ny = np.interp(field.s, path_s - path_s[0] + field.s[0], path_normals[:, 1])
+
+    # Normalise field normals
+    n_len = np.sqrt(field_nx**2 + field_ny**2)
+    n_len = np.where(n_len < 1e-12, 1.0, n_len)
+    field_nx /= n_len
+    field_ny /= n_len
+
+    # Determine y-layers to draw
+    if Ny > n_y_vis:
+        y_idx = np.linspace(0, Ny - 1, n_y_vis + 1, dtype=int)
+    else:
+        y_idx = np.arange(Ny)
+
+    for i in range(M_field - 1):
+        for jj in range(len(y_idx) - 1):
+            j0 = y_idx[jj]
+            j1 = y_idx[jj + 1]
+            # Mean velocity for this quad's colour
+            u_avg = 0.25 * (
+                u_arr[i, j0] + u_arr[i, j1]
+                + u_arr[i + 1, j0] + u_arr[i + 1, j1]
+            )
+            color = cmap_obj(norm(u_avg))
+
+            # y displacement scaled to geometry
+            d00 = field.y[i, j0] / delta_max * scale
+            d01 = field.y[i, j1] / delta_max * scale
+            d10 = field.y[i + 1, j0] / delta_max * scale
+            d11 = field.y[i + 1, j1] / delta_max * scale
+
+            quad_x = [
+                field_px[i] + d00 * field_nx[i],
+                field_px[i] + d01 * field_nx[i],
+                field_px[i + 1] + d11 * field_nx[i + 1],
+                field_px[i + 1] + d10 * field_nx[i + 1],
+            ]
+            quad_y = [
+                field_py[i] + d00 * field_ny[i],
+                field_py[i] + d01 * field_ny[i],
+                field_py[i + 1] + d11 * field_ny[i + 1],
+                field_py[i + 1] + d10 * field_ny[i + 1],
+            ]
+            ax.fill(quad_x, quad_y, color=color, edgecolor="none", zorder=2)
+
+    # Draw delta envelope lines
+    if draw_delta_line:
+        env_x = field_px + (delta_arr / delta_max * scale) * field_nx
+        env_y = field_py + (delta_arr / delta_max * scale) * field_ny
+        ax.plot(env_x, env_y, line_style, lw=1.2, zorder=5)
+
+
 def plot_bl_velocity_envelope_comparison(
     bl_result,  # BoundaryLayerCaseResult
     comparison_result,  # BLComparisonResult
@@ -1635,6 +1720,279 @@ def plot_bl_velocity_contour_normalized_comparison(
         fig.savefig(output_path, dpi=150, bbox_inches="tight")
 
     return fig, ax
+
+
+def plot_bl_fluent_envelope_side_by_side(
+    bl_result,  # BoundaryLayerCaseResult
+    comparison_result,  # BLComparisonResult
+    profile_name: str = "thwaites",
+    scale: float = 0.15,
+    cmap: str = "viridis",
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+    n_y_vis: int = 20,
+) -> Tuple[Figure, NDArray]:
+    """Side-by-side wrapped velocity envelope (BL Solver vs Fluent).
+
+    Creates a 1x2 figure showing the absolute velocity envelope for the
+    BL solver on the left and Fluent on the right. Both use the same
+    colormap for direct comparison.
+
+    Args:
+        bl_result: Panel-method BL solver result.
+        comparison_result: Fluent comparison result.
+        profile_name: BL profile to compare.
+        scale: Envelope displacement scale.
+        cmap: Colormap for absolute velocity.
+        title: Plot title.
+        output_path: Save path.
+        n_y_vis: Number of wall-normal layers.
+    """
+    fig, (ax_bl, ax_fl) = plt.subplots(1, 2, figsize=(14, 6))
+
+    if not comparison_result.has_fluent_data:
+        ax_fl.text(0.5, 0.5, "Fluent data not available", ha="center", va="center")
+        ax_fl.axis("off")
+        return fig, np.array([ax_bl, ax_fl])
+
+    field_u = bl_result.upper.fields.get(profile_name)
+    field_l = bl_result.lower.fields.get(profile_name)
+    fluent_u = comparison_result.upper_fluent_field
+    fluent_l = comparison_result.lower_fluent_field
+
+    if None in (field_u, field_l, fluent_u, fluent_l):
+        ax_bl.text(0.5, 0.5, "Data unavailable", ha="center", va="center")
+        return fig, np.array([ax_bl, ax_fl])
+
+    surface_x = bl_result.surface_x
+    surface_y = bl_result.surface_y
+    normals = compute_outward_normals(surface_x, surface_y, closed=True)
+
+    bx = np.append(surface_x, surface_x[0])
+    by = np.append(surface_y, surface_y[0])
+
+    # Global velocity limits
+    vmax = 0.0
+    vmin = float('inf')
+    for f in [field_u, field_l, fluent_u, fluent_l]:
+        vmax = max(vmax, float(np.nanmax(f.u)))
+        vmin = min(vmin, float(np.nanmin(f.u)))
+
+    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+    cmap_obj = plt.cm.get_cmap(cmap)
+
+    # Global delta max for scaling
+    delta_max = max(
+        float(np.nanmax(field_u.delta)) if np.any(field_u.delta > 0) else 1.0,
+        float(np.nanmax(field_l.delta)) if np.any(field_l.delta > 0) else 1.0,
+        float(np.nanmax(fluent_u.delta)) if np.any(fluent_u.delta > 0) else 1.0,
+        float(np.nanmax(fluent_l.delta)) if np.any(fluent_l.delta > 0) else 1.0,
+    )
+
+    for ax, name in [(ax_bl, "BL Solver"), (ax_fl, "Fluent CFD")]:
+        ax.plot(bx, by, "k-", lw=2.0, zorder=10)
+        ax.set_aspect("equal")
+        ax.set_title(name, fontsize=11)
+        ax.set_xlabel("$x$")
+        ax.set_ylabel("$y$")
+
+    # Draw BL solver (left)
+    _draw_envelope_absolute_quads(
+        ax_bl, field_u, field_u.u, field_u.delta,
+        surface_x, surface_y, bl_result.upper.panel_indices,
+        normals, scale, delta_max, cmap_obj, norm, n_y_vis,
+        line_style="k-"
+    )
+    _draw_envelope_absolute_quads(
+        ax_bl, field_l, field_l.u, field_l.delta,
+        surface_x, surface_y, bl_result.lower.panel_indices,
+        normals, scale, delta_max, cmap_obj, norm, n_y_vis,
+        line_style="k-"
+    )
+
+    # Draw Fluent (right)
+    _draw_envelope_absolute_quads(
+        ax_fl, field_u, fluent_u.u, fluent_u.delta,
+        surface_x, surface_y, bl_result.upper.panel_indices,
+        normals, scale, delta_max, cmap_obj, norm, n_y_vis,
+        line_style="k--"
+    )
+    _draw_envelope_absolute_quads(
+        ax_fl, field_l, fluent_l.u, fluent_l.delta,
+        surface_x, surface_y, bl_result.lower.panel_indices,
+        normals, scale, delta_max, cmap_obj, norm, n_y_vis,
+        line_style="k--"
+    )
+
+    sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=norm)
+    sm.set_array([])
+    fig.colorbar(sm, ax=[ax_bl, ax_fl], label="u [m/s]", shrink=0.8, pad=0.02)
+
+    ax_bl.plot([], [], "k-", lw=1.2, label=r"$\delta$")
+    ax_bl.legend(loc="upper right", fontsize=8)
+    ax_fl.plot([], [], "k--", lw=1.2, label=r"$\delta$")
+    ax_fl.legend(loc="upper right", fontsize=8)
+
+    if title:
+        fig.suptitle(title, fontsize=12)
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, np.array([ax_bl, ax_fl])
+
+
+def plot_bl_fluent_contour_side_by_side(
+    field,  # BLFieldData
+    fluent_field,  # InterpolatedBLField
+    cmap: str = "viridis",
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+) -> Tuple[Figure, NDArray]:
+    """Side-by-side s-y absolute velocity contour (BL Solver vs Fluent)."""
+    fig, (ax_bl, ax_fl) = plt.subplots(2, 1, figsize=(10, 8), sharex=True, sharey=True)
+
+    M, Ny = field.u.shape
+
+    if fluent_field is None:
+        ax_fl.text(0.5, 0.5, "Fluent data not available", ha="center", va="center")
+        ax_fl.axis("off")
+        if output_path is not None:
+            fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        return fig, np.array([ax_bl, ax_fl])
+
+    vmax = max(float(np.nanmax(field.u)), float(np.nanmax(fluent_field.u)))
+    vmin = min(float(np.nanmin(field.u)), float(np.nanmin(fluent_field.u)))
+
+    s_edges = _cell_edges(field.s)
+    y_edge_grid = np.zeros((M + 1, Ny + 1), dtype=np.float64)
+    for i in range(M):
+        y_edge_grid[i] = _cell_edges(field.y[i])
+    y_edge_grid[M] = y_edge_grid[M - 1]
+
+    S_grid = np.broadcast_to(s_edges[:, np.newaxis], (M + 1, Ny + 1))
+
+    pcm1 = ax_bl.pcolormesh(
+        S_grid, y_edge_grid, field.u,
+        cmap=cmap, shading="flat", rasterized=True,
+        vmin=vmin, vmax=vmax,
+    )
+    ax_bl.plot(field.s, field.delta, "w-", lw=1.5, label="δ (BL)", alpha=0.7)
+    ax_bl.legend(loc="upper left", fontsize=8, framealpha=0.8)
+
+    pcm2 = ax_fl.pcolormesh(
+        S_grid, y_edge_grid, fluent_field.u,
+        cmap=cmap, shading="flat", rasterized=True,
+        vmin=vmin, vmax=vmax,
+    )
+    ax_fl.plot(fluent_field.s, fluent_field.delta, "w--", lw=1.5, label="δ (Fluent)", alpha=0.7)
+    ax_fl.legend(loc="upper left", fontsize=8, framealpha=0.8)
+
+    fig.colorbar(pcm2, ax=[ax_bl, ax_fl], label="u [m/s]", shrink=0.8)
+
+    ax_bl.set_title("BL Solver")
+    ax_fl.set_title("Fluent CFD")
+    ax_fl.set_xlabel("Arc length $s$ [m]")
+    ax_bl.set_ylabel("Wall-normal $y$ [m]")
+    ax_fl.set_ylabel("Wall-normal $y$ [m]")
+
+    ax_bl.set_xlim(field.s[0], field.s[-1])
+    ax_bl.set_ylim(0, None)
+
+    if title:
+        fig.suptitle(title, fontsize=12)
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, np.array([ax_bl, ax_fl])
+
+
+def plot_bl_fluent_contour_normalized_side_by_side(
+    field,  # BLFieldData
+    fluent_field,  # InterpolatedBLField
+    cmap: str = "viridis",
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+) -> Tuple[Figure, NDArray]:
+    """Side-by-side normalized s-(y/δ) velocity contour (BL Solver vs Fluent)."""
+    fig, (ax_bl, ax_fl) = plt.subplots(2, 1, figsize=(10, 8), sharex=True, sharey=True)
+
+    M, Ny = field.u.shape
+
+    if fluent_field is None:
+        ax_fl.text(0.5, 0.5, "Fluent data not available", ha="center", va="center")
+        ax_fl.axis("off")
+        if output_path is not None:
+            fig.savefig(output_path, dpi=150, bbox_inches="tight")
+        return fig, np.array([ax_bl, ax_fl])
+
+    vmax = max(float(np.nanmax(field.u)), float(np.nanmax(fluent_field.u)))
+    vmin = min(float(np.nanmin(field.u)), float(np.nanmin(fluent_field.u)))
+
+    s_edges = _cell_edges(field.s)
+    S_grid = np.broadcast_to(s_edges[:, np.newaxis], (M + 1, Ny + 1))
+
+    # BL solver normalized y
+    eta_bl = np.zeros_like(field.y)
+    for i in range(M):
+        if field.delta[i] > 0:
+            eta_bl[i] = field.y[i] / field.delta[i]
+        else:
+            eta_bl[i] = np.linspace(0.0, 1.0, Ny)
+
+    eta_edge_bl = np.zeros((M + 1, Ny + 1), dtype=np.float64)
+    for i in range(M):
+        eta_edge_bl[i] = _cell_edges(eta_bl[i])
+    eta_edge_bl[M] = eta_edge_bl[M - 1]
+
+    pcm1 = ax_bl.pcolormesh(
+        S_grid, eta_edge_bl, field.u,
+        cmap=cmap, shading="flat", rasterized=True,
+        vmin=vmin, vmax=vmax,
+    )
+    ax_bl.axhline(1.0, color="w", ls="-", lw=1.5, label="δ (BL)", alpha=0.7)
+    ax_bl.legend(loc="upper left", fontsize=8, framealpha=0.8)
+
+    # Fluent normalized y
+    eta_fl = np.zeros_like(field.y)
+    for i in range(M):
+        if fluent_field.delta[i] > 0:
+            eta_fl[i] = field.y[i] / fluent_field.delta[i]
+        else:
+            eta_fl[i] = np.linspace(0.0, 1.0, Ny)
+
+    eta_edge_fl = np.zeros((M + 1, Ny + 1), dtype=np.float64)
+    for i in range(M):
+        eta_edge_fl[i] = _cell_edges(eta_fl[i])
+    eta_edge_fl[M] = eta_edge_fl[M - 1]
+
+    pcm2 = ax_fl.pcolormesh(
+        S_grid, eta_edge_fl, fluent_field.u,
+        cmap=cmap, shading="flat", rasterized=True,
+        vmin=vmin, vmax=vmax,
+    )
+    ax_fl.axhline(1.0, color="w", ls="--", lw=1.5, label="δ (Fluent)", alpha=0.7)
+    ax_fl.legend(loc="upper left", fontsize=8, framealpha=0.8)
+
+    fig.colorbar(pcm2, ax=[ax_bl, ax_fl], label="u [m/s]", shrink=0.8)
+
+    ax_bl.set_title("BL Solver")
+    ax_fl.set_title("Fluent CFD")
+    ax_fl.set_xlabel("Arc length $s$ [m]")
+    ax_bl.set_ylabel(r"$y / \delta$")
+    ax_fl.set_ylabel(r"$y / \delta$")
+
+    ax_bl.set_xlim(field.s[0], field.s[-1])
+    ax_bl.set_ylim(0, None)
+
+    if title:
+        fig.suptitle(title, fontsize=12)
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig, np.array([ax_bl, ax_fl])
 
 
 def plot_bl_comparison_report(

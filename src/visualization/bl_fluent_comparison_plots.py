@@ -198,10 +198,38 @@ def plot_bl_wall_comparison(
             else:
                 continue
 
+            # Plot only over the BL-valid region for this quantity so Fluent
+            # data beyond BL separation/termination does not dominate the
+            # visual comparison.
             if len(bl_val) > 0:
-                ax.plot(bl_s, bl_val, "-", lw=1.5, color="#1f77b4", label="BL solver")
-            if len(fl_val) > 0:
-                ax.plot(fl_s, fl_val, "--", lw=1.5, color="#d62728", label="Fluent")
+                valid_bl = np.isfinite(bl_val)
+                if np.any(valid_bl):
+                    bl_s_plot = bl_s[valid_bl]
+                    bl_val_plot = bl_val[valid_bl]
+                else:
+                    bl_s_plot = np.array([])
+                    bl_val_plot = np.array([])
+            else:
+                bl_s_plot = np.array([])
+                bl_val_plot = np.array([])
+
+            fl_s_plot = fl_s
+            fl_val_plot = fl_val
+            if len(bl_s_plot) > 0 and len(fl_val_plot) > 0:
+                s_bl_min = float(np.min(bl_s_plot))
+                s_bl_max = float(np.max(bl_s_plot))
+                in_range = (
+                    np.isfinite(fl_val_plot)
+                    & (fl_s_plot >= s_bl_min)
+                    & (fl_s_plot <= s_bl_max)
+                )
+                fl_s_plot = fl_s_plot[in_range]
+                fl_val_plot = fl_val_plot[in_range]
+
+            if len(bl_val_plot) > 0:
+                ax.plot(bl_s_plot, bl_val_plot, "-", lw=1.5, color="#1f77b4", label="BL solver")
+            if len(fl_val_plot) > 0:
+                ax.plot(fl_s_plot, fl_val_plot, "--", lw=1.5, color="#d62728", label="Fluent")
 
             if qty_idx == 0:
                 ax.set_title(f"{side.capitalize()} side", fontsize=11)

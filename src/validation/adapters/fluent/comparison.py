@@ -292,7 +292,7 @@ class BLComparisonRunner:
         velocity_metrics = self._compute_velocity_metrics(
             profile_name, upper_fluent_field, lower_fluent_field
         )
-        wall_metrics = self._compute_wall_metrics(fluent_result)
+        wall_metrics = self._compute_wall_metrics(fluent_result, profile_name)
 
         return BLComparisonResult(
             bl_result=self.bl_result,
@@ -386,6 +386,7 @@ class BLComparisonRunner:
     def _compute_wall_metrics(
         self,
         fluent_result: FluentBLResult,
+        profile_name: str,
     ) -> Dict[str, Dict[str, BLComparisonMetrics]]:
         """Compute wall quantity (Ue, δ, Cf) error metrics."""
         metrics: Dict[str, Dict[str, BLComparisonMetrics]] = {}
@@ -394,30 +395,34 @@ class BLComparisonRunner:
             bl_path = self.bl_result.sides[side]
             fluent_path = fluent_result.sides[side]
 
-            # Find common arc-length range
-            s_min = max(bl_path.s.min(), fluent_path.s.min())
-            s_max = min(bl_path.s.max(), fluent_path.s.max())
+            # Use the selected profile result
+            if profile_name not in bl_path.results:
+                continue
 
+            bl_res = bl_path.results[profile_name]
+
+            # Compare only where BL integral solution is valid (from
+            # first solved station up to separation / termination).
+            valid_bl = np.isfinite(bl_res.theta)
+            if not np.any(valid_bl):
+                continue
+
+            s_bl_min = float(np.min(bl_res.s[valid_bl]))
+            s_bl_max = float(np.max(bl_res.s[valid_bl]))
+
+            s_min = max(s_bl_min, float(np.min(fluent_path.s)))
+            s_max = min(s_bl_max, float(np.max(fluent_path.s)))
             if s_max <= s_min:
                 continue
 
-            # Interpolate to common stations
-            s_common = np.linspace(s_min, s_max, 50)
-
-            # Get first available profile result
-            if not bl_path.results:
-                continue
-            first_profile = list(bl_path.results.keys())[0]
-            bl_res = bl_path.results[first_profile]
-
             # Interpolate BL solver quantities
+            s_common = np.linspace(s_min, s_max, 50)
             bl_Ue = np.interp(s_common, bl_path.s, bl_path.Ue)
-            bl_cf_local = np.interp(s_common, bl_res.s, bl_res.cf)
-            # Convert BL solver cf (based on local Ue) to freestream-based Cf
-            # cf_local = 2 * τ_w / (ρ * Ue²)
-            # Cf_freestream = τ_w / (0.5 * ρ * U_inf²)
-            # => Cf_freestream = cf_local * (Ue / U_inf)²
-            bl_Cf = bl_cf_local * (bl_Ue / self.U_inf) ** 2
+            cf_valid = np.isfinite(bl_res.cf)
+            if np.any(cf_valid):
+                bl_Cf = np.interp(s_common, bl_res.s[cf_valid], bl_res.cf[cf_valid])
+            else:
+                bl_Cf = np.full_like(s_common, np.nan, dtype=np.float64)
 
             # Interpolate Fluent quantities
             fluent_Ue = np.interp(s_common, fluent_path.s, fluent_path.Ue)
@@ -429,11 +434,11 @@ class BLComparisonRunner:
             }
 
             # Add delta comparison if available
-            if first_profile in bl_path.fields:
-                bl_delta = bl_path.fields[first_profile].delta
+            if profile_name in bl_path.fields:
+                bl_delta = bl_path.fields[profile_name].delta
                 bl_delta_interp = np.interp(
                     s_common,
-                    bl_path.fields[first_profile].s,
+                    bl_path.fields[profile_name].s,
                     bl_delta,
                 )
                 fluent_delta_interp = np.interp(

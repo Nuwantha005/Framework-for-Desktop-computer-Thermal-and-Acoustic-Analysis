@@ -12,16 +12,12 @@ each path using one or more velocity profiles.
 When ``--reconstruct`` is given, also generates velocity-field visualizations:
 s-y contour plots, normalised y/δ contours, and wrapped velocity envelopes.
 
-When ``--compare-fluent`` is given, loads Fluent CFD data from the case's
-fluent_case/export/viscous_bl/ directory and generates comparison plots.
-
 Usage::
 
     python demos/demo_boundary_layer.py cases/rounded_square
     python demos/demo_boundary_layer.py cases/rounded_square --solver-type linear_source
     python demos/demo_boundary_layer.py cases/rounded_square --profiles blasius thwaites
     python demos/demo_boundary_layer.py cases/rounded_square --reconstruct
-    python demos/demo_boundary_layer.py cases/rounded_square --compare-fluent
     python demos/demo_boundary_layer.py cases/rounded_square --show-plots
 """
 
@@ -45,15 +41,6 @@ from visualization.bl_plots import (
     plot_bl_velocity_contour_two_sides,
     plot_bl_velocity_contour_normalized_two_sides,
     plot_bl_velocity_envelope_two_sides,
-    plot_bl_fluent_comparison,
-    plot_bl_fluent_comparison_two_sides,
-    plot_bl_wall_comparison,
-    plot_bl_velocity_envelope_comparison,
-    plot_bl_velocity_contour_normalized_comparison,
-    plot_bl_comparison_report,
-    plot_bl_fluent_envelope_side_by_side,
-    plot_bl_fluent_contour_side_by_side,
-    plot_bl_fluent_contour_normalized_side_by_side,
 )
 
 
@@ -95,26 +82,6 @@ def _print_summary(bl) -> None:
                       f"δ_max = {np.nanmax(fld.delta):.3e} m")
 
 
-def _print_comparison_metrics(result) -> None:
-    """Print comparison error metrics."""
-    print("\n  === COMPARISON METRICS ===")
-
-    if result.wall_metrics:
-        for side, metrics in result.wall_metrics.items():
-            print(f"\n    {side.upper()} SIDE (wall quantities):")
-            for qty, m in metrics.items():
-                print(f"      {qty}: RMS={m.RMS:.4e}, MAE={m.MAE:.4e}, "
-                      f"rel_L2={m.relative_L2:.2%} ({m.n_points} pts)")
-
-    if result.velocity_metrics:
-        print("\n    VELOCITY FIELD:")
-        for side, metrics in result.velocity_metrics.items():
-            print(f"      {side}: ", end="")
-            for qty, m in metrics.items():
-                print(f"{qty} RMS={m.RMS:.4e} ", end="")
-            print()
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run boundary layer analysis on a panel-method case",
@@ -137,12 +104,6 @@ def main() -> int:
     parser.add_argument("--reconstruct", action="store_true",
                         help="Run velocity-field reconstruction and generate "
                              "contour/envelope plots")
-    parser.add_argument("--compare-fluent", action="store_true",
-                        help="Compare with Fluent CFD data (requires "
-                             "fluent_case/export/viscous_bl/ data)")
-    parser.add_argument("--compare-profile", type=str, default=None,
-                        help="BL profile to use for Fluent comparison. "
-                             "If not specified, compares all profiles with reconstruction.")
     parser.add_argument("--show-plots", action="store_true",
                         help="Display plots interactively")
     parser.add_argument("--output-dir", type=Path, default=None,
@@ -176,8 +137,7 @@ def main() -> int:
     transition = args.transition or bl_cfg.transition_model
     envelope_scale = args.envelope_scale or bl_cfg.envelope_scale
 
-    # Force reconstruction if comparing with Fluent
-    reconstruct = args.reconstruct or args.compare_fluent
+    reconstruct = args.reconstruct
 
     print(f"  BL profiles: {profiles}")
     if transition:
@@ -303,141 +263,6 @@ def main() -> int:
             )
             plt.close("all")
             print(f"  + bl_vel_envelope_{safe}.png")
-
-    # ------------------------------------------------------------------
-    # 5. Fluent comparison (when --compare-fluent is given)
-    # ------------------------------------------------------------------
-    if args.compare_fluent:
-        print("\n  --- Fluent Comparison ---")
-
-        from validation.adapters.fluent import BLComparisonRunner
-
-        # Create fluent comparison output directory
-        fluent_dir = output_dir / "fluent_comparison"
-        fluent_dir.mkdir(parents=True, exist_ok=True)
-
-        # Determine which profiles to compare
-        if args.compare_profile:
-            # Single profile specified
-            compare_profiles = [args.compare_profile]
-        else:
-            # All available profiles with reconstruction
-            compare_profiles = list(bl.upper.fields.keys())
-
-        for profile_name in compare_profiles:
-            comp_runner = BLComparisonRunner(case, bl)
-            comp_result = comp_runner.run(profile_name=profile_name)
-
-            if not comp_result.has_fluent_data:
-                print("  Warning: Fluent data not available")
-                print("  Expected: fluent_case/export/viscous_bl/{filed_data,wall_data}")
-                break
-
-            # Use normalized profile name for file naming
-            pname = comp_result.profile_name
-            safe_pname = pname.lower().replace(" ", "_").replace("-", "_")
-
-            if profile_name == compare_profiles[0]:
-                print("  Fluent data loaded successfully")
-
-            print(f"\n  Profile: {pname}")
-            _print_comparison_metrics(comp_result)
-
-            # Velocity field comparison (two sides)
-            plot_bl_fluent_comparison_two_sides(
-                bl, comp_result,
-                profile_name=pname,
-                title=f"Velocity difference — {pname} — {case.name}",
-                output_path=fluent_dir / f"bl_fluent_velocity_diff_{safe_pname}.png",
-            )
-            plt.close("all")
-            print(f"  + fluent_comparison/bl_fluent_velocity_diff_{safe_pname}.png")
-
-            # Wall quantities comparison
-            plot_bl_wall_comparison(
-                bl, comp_result.fluent_result,
-                quantities=["Ue", "Cf", "delta"],
-                profile_name=pname,
-                title=f"Wall Quantities — {pname} — {case.name}",
-                output_path=fluent_dir / f"bl_fluent_wall_{safe_pname}.png",
-            )
-            plt.close("all")
-            print(f"  + fluent_comparison/bl_fluent_wall_{safe_pname}.png")
-
-            # Combined Envelope comparison plot
-            plot_bl_velocity_envelope_comparison(
-                bl, comp_result,
-                profile_name=pname,
-                title=f"Velocity difference envelope — {pname} vs Fluent — {case.name}",
-                output_path=fluent_dir / f"bl_fluent_envelope_{safe_pname}.png",
-            )
-            plt.close("all")
-            print(f"  + fluent_comparison/bl_fluent_envelope_{safe_pname}.png")
-
-            # Individual side comparisons
-            for side in ["upper", "lower"]:
-                field = bl.sides[side].fields.get(pname)
-                fluent_field = comp_result.sides[side]
-                if field is not None and fluent_field is not None:
-                    plot_bl_fluent_comparison(
-                        field, fluent_field,
-                        title=f"{side.capitalize()} — {pname} vs Fluent — {case.name}",
-                        output_path=fluent_dir / f"bl_fluent_{side}_{safe_pname}.png",
-                    )
-                    plt.close("all")
-                    print(f"  + fluent_comparison/bl_fluent_{side}_{safe_pname}.png")
-
-                    # Normalized comparison plot
-                    plot_bl_velocity_contour_normalized_comparison(
-                        field, fluent_field,
-                        title=f"{side.capitalize()} normalized — {pname} vs Fluent — {case.name}",
-                        output_path=fluent_dir / f"bl_fluent_normalized_{side}_{safe_pname}.png",
-                    )
-                    plt.close("all")
-                    print(f"  + fluent_comparison/bl_fluent_normalized_{side}_{safe_pname}.png")
-
-            # Comprehensive metrics report
-            plot_bl_comparison_report(
-                comp_result,
-                title=f"Comparison Report — {pname} — {case.name}",
-                output_path=fluent_dir / f"bl_fluent_report_{safe_pname}.png",
-            )
-            plt.close("all")
-            print(f"  + fluent_comparison/bl_fluent_report_{safe_pname}.png")
-
-            # --- Side-by-side Absolute Velocity Comparisons ---
-            
-            # Side-by-side Envelope
-            plot_bl_fluent_envelope_side_by_side(
-                bl, comp_result,
-                profile_name=pname,
-                title=f"Absolute Velocity Envelope — {pname} vs Fluent — {case.name}",
-                output_path=fluent_dir / f"bl_fluent_envelope_abs_{safe_pname}.png",
-            )
-            plt.close("all")
-            print(f"  + fluent_comparison/bl_fluent_envelope_abs_{safe_pname}.png")
-
-            for side in ["upper", "lower"]:
-                field = bl.sides[side].fields.get(pname)
-                fluent_field = comp_result.sides[side]
-                if field is not None and fluent_field is not None:
-                    # Side-by-side Contour
-                    plot_bl_fluent_contour_side_by_side(
-                        field, fluent_field,
-                        title=f"{side.capitalize()} Absolute Velocity — {pname} vs Fluent — {case.name}",
-                        output_path=fluent_dir / f"bl_fluent_contour_abs_{side}_{safe_pname}.png",
-                    )
-                    plt.close("all")
-                    print(f"  + fluent_comparison/bl_fluent_contour_abs_{side}_{safe_pname}.png")
-
-                    # Side-by-side Normalized Contour
-                    plot_bl_fluent_contour_normalized_side_by_side(
-                        field, fluent_field,
-                        title=f"{side.capitalize()} Normalized Velocity — {pname} vs Fluent — {case.name}",
-                        output_path=fluent_dir / f"bl_fluent_normalized_abs_{side}_{safe_pname}.png",
-                    )
-                    plt.close("all")
-                    print(f"  + fluent_comparison/bl_fluent_normalized_abs_{side}_{safe_pname}.png")
 
     if args.show_plots:
         plt.show()

@@ -7,7 +7,8 @@
 - [x] Scene assembly (multi-component with transforms)
 - [x] Visualization (contours, streamlines, Cp, surface envelopes)
 - [x] Post-processing pipeline (pressure, velocity potential, stream function, vorticity)
-- [x] OpenFOAM validation pipeline (case generation, meshing, convergence, comparison)
+- [x] OpenFOAM validation pipeline (legacy panel-method comparison)
+- [x] Fluent-based BL comparison plotting pipeline
 - [x] Grid Convergence Index (GCI) computation
 
 ## Phase 2: Extended Panel Methods

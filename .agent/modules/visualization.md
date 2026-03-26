@@ -1,21 +1,17 @@
 # Visualization Module State
-**Last modified**: 2026-03-16
+**Last modified**: 2026-03-26
 
 ## Files
 - `visualizer.py` (654 lines) — `OutputManager` (directory/timestamp handling); `Visualizer` facade: `create_figure()`, `plot_mesh()`, `plot_scene()`, `plot_contours()`, `plot_streamlines()`, `plot_cp()`, `finalize()`
 - `field2d.py` (204 lines) — `VelocityField2D`: `compute(x_range, y_range, resolution)` → (XX, YY, Vx, Vy); per-component body masking; result caching
 - `comparison.py` (978 lines) — `FieldSeries`, `LineSeries`, `ComparisonMetrics` dataclasses; `ComparisonVisualizer`: `compare_contours()`, `plot_difference()`, `compare_lines()`, `compute_metrics()`
 - `solver_comparison.py` — `SolverComparisonVisualizer`: generates Vt/Cp envelope overlays, arc-length line charts, difference plots, metrics tables, and ranking charts for inter-solver + OF reference comparison. Outputs to `<case>/out/solver_comparison/`. OF reference drawn as dashed dark-grey line.
-- `bl_plots.py` (1027 lines) — Boundary layer visualization. Contains:
-  - **Line plots**: `plot_bl_line()`, `plot_bl_lines_multi()`, `plot_bl_two_sides()` — BL quantities (cf, δ*, θ, H, Re_θ) vs arc length, single or two-sided
-  - **Envelope plots**: `plot_bl_envelope()`, `plot_bl_envelope_comparison()` — BL quantity wrapped around body surface (single or multi-profile overlay)
-  - **Full comparison**: `plot_bl_comparison()` — composite figure with two-sided lines + envelope + Ue reference
-  - **Velocity contour (Phase 5)**: `plot_bl_velocity_contour()` — s-y pcolormesh of reconstructed u(s,y) with δ(s) overlay
-  - **Normalised contour (Phase 5)**: `plot_bl_velocity_contour_normalized()` — s-(y/δ) normalised rectangle contour
-  - **Velocity envelope (Phase 5)**: `plot_bl_velocity_envelope()` — velocity-coloured quads wrapped around body geometry using outward normals
-  - **Two-sided wrappers (Phase 5)**: `plot_bl_velocity_contour_two_sides()`, `plot_bl_velocity_contour_normalized_two_sides()`, `plot_bl_velocity_envelope_two_sides()` — upper/lower in one figure
-  - **OF comparison placeholder (Phase 5)**: `plot_bl_of_comparison()` — shows panel-method contour with annotation when of_field=None; future: RMS difference contour vs OpenFOAM
-  - **Helper**: `_cell_edges()` — cell-edge coordinates from centres for pcolormesh
+- `bl_plots.py` — compatibility re-export layer for BL plotting APIs (old import path preserved)
+- `bl_plot_common.py` — shared BL plotting constants/helpers (`_color_for`, `_LABELS`, `_cell_edges`)
+- `bl_line_plots.py` — BL line plots and composite comparison (`plot_bl_line`, `plot_bl_lines_multi`, `plot_bl_two_sides`, `plot_bl_comparison`)
+- `bl_envelope_plots.py` — BL envelope-only plots (`plot_bl_envelope`, `plot_bl_envelope_comparison`)
+- `bl_velocity_plots.py` — reconstructed BL velocity visualizations (contour, normalized contour, velocity envelope and two-side wrappers)
+- `bl_fluent_comparison_plots.py` — Fluent comparison visualizations (difference contours/envelopes, side-by-side absolute plots, metrics report)
 - `panel2d.py` (184 lines) — `PanelVisualizer2D` (legacy): `compute_field()`, `plot_streamlines()`, `plot_contours()`
 - `mesh_plot.py` (364 lines) — `MeshPlotter`; quick helpers: `quick_plot_mesh()`, `quick_plot_component()`, `quick_plot_scene()`
 - `surface_envelope.py` (509 lines) — `compute_outward_normals()`, `plot_surface_envelope()`, `plot_surface_envelope_comparison()`, `plot_dual_surface_envelope()`
@@ -31,7 +27,7 @@
 - `ComparisonVisualizer(output_dir)` → `.compare_contours(fields, mesh)` → Figure
 - `SolverComparisonVisualizer(result, output_dir, subfolder="solver_comparison")` → `.plot_all(show, save)` — plots: `vt_envelope`, `cp_envelope`, `vt_arc_length`, `cp_arc_length`, `vt_dual`, `vt_difference`, `metrics_table`, `ranking`
 
-### BL integral-quantity plots (bl_plots.py)
+### BL integral-quantity plots
 - `plot_bl_line(path_result, quantity, ax, title, output_path)` → `(fig, ax)` — single-path line plot of BL quantity vs s
 - `plot_bl_lines_multi(path_result, quantities, title, output_path)` → `(fig, axes)` — multi-panel line plots
 - `plot_bl_two_sides(case_result, quantities, title, output_path)` → `(fig, axes)` — upper|lower side-by-side line plots
@@ -39,7 +35,7 @@
 - `plot_bl_envelope_comparison(case_result, quantity, scale, ax, title, output_path)` → `(fig, ax)` — multi-profile overlay envelope
 - `plot_bl_comparison(case_result, quantities, envelope_quantity, envelope_scale, title, output_path, show)` → `Figure` — full composite comparison figure
 
-### BL velocity-field plots (bl_plots.py, Phase 5)
+### BL velocity-field plots (Phase 5)
 All require `BLFieldData` from `reconstruct_bl_field()` (set `reconstruct=True` in runner).
 
 - `plot_bl_velocity_contour(field, ax, cmap, show_delta, title, output_path, n_levels)` → `(fig, ax)` — s-y pcolormesh with δ(s) overlay
@@ -48,7 +44,18 @@ All require `BLFieldData` from `reconstruct_bl_field()` (set `reconstruct=True` 
 - `plot_bl_velocity_contour_two_sides(field_upper, field_lower, cmap, show_delta, title, output_path)` → `(fig, (ax_u, ax_l))` — two-panel s-y contour
 - `plot_bl_velocity_contour_normalized_two_sides(field_upper, field_lower, cmap, title, output_path)` → `(fig, (ax_u, ax_l))` — two-panel normalised contour
 - `plot_bl_velocity_envelope_two_sides(field_upper, field_lower, case_result, scale, cmap, title, output_path, n_y_vis)` → `(fig, ax)` — both paths on one body
-- `plot_bl_of_comparison(field, of_field, cmap, ax, title, output_path)` → `(fig, ax)` — OpenFOAM comparison placeholder (shows annotation when of_field=None)
+- `plot_bl_of_comparison(field, of_field, cmap, ax, title, output_path)` → `(fig, ax)` — compatibility alias to Fluent difference comparison
+
+### BL Fluent comparison plots
+- `plot_bl_fluent_comparison(field, fluent_field, ...)` → `(fig, ax)`
+- `plot_bl_fluent_comparison_two_sides(bl_result, comparison_result, ...)` → `(fig, (ax_u, ax_l))`
+- `plot_bl_wall_comparison(bl_result, fluent_result, ...)` → `(fig, axes)`
+- `plot_bl_velocity_envelope_comparison(bl_result, comparison_result, ...)` → `(fig, ax)`
+- `plot_bl_velocity_contour_normalized_comparison(field, fluent_field, ...)` → `(fig, ax)`
+- `plot_bl_fluent_envelope_side_by_side(bl_result, comparison_result, ...)` → `(fig, axes)`
+- `plot_bl_fluent_contour_side_by_side(field, fluent_field, ...)` → `(fig, axes)`
+- `plot_bl_fluent_contour_normalized_side_by_side(field, fluent_field, ...)` → `(fig, axes)`
+- `plot_bl_comparison_report(comparison_result, ...)` → `(fig, axes)`
 
 ## Data Flow
 
@@ -69,7 +76,7 @@ For integral-quantity plots (cf, δ*, θ, H): `BoundaryLayerCaseResult` → `plo
 ## What's Next
 - PyVista 3D visualization for 3D panel results
 - Interactive plotting (ipywidgets or panel)
-- OpenFOAM BL field extraction for `plot_bl_of_comparison()` (currently placeholder)
+- Improve BL velocity-envelope rendering performance (`PolyCollection` candidate)
 
 ## Known Issues
 - `PanelVisualizer2D` and `StreamlineVisualizer` are legacy; prefer `Visualizer` + `VelocityField2D`

@@ -1,6 +1,11 @@
 # Validation Module
 
-The validation module (`validation/`) provides an OpenFOAM-based pipeline for comparing panel method results against CFD simulations.
+The validation module (`validation/`) now has two tracks:
+
+- Current: Fluent-based boundary-layer (BL) validation
+- Legacy: OpenFOAM-based panel-method validation
+
+The Fluent BL track is the active comparison workflow.
 
 ## Pipeline Architecture
 
@@ -18,6 +23,20 @@ The validation module (`validation/`) provides an OpenFOAM-based pipeline for co
 ```
 
 ## Key Components
+
+### Fluent BL Comparison (Current)
+
+Fluent BL comparison is implemented under `src/validation/adapters/fluent/` and compares reconstructed BL fields against Fluent exports:
+
+- `ascii_reader.py` — loads `fluent_case/export/viscous_bl/{filed_data,wall_data}`
+- `bl_extractor.py` — extracts wall/edge quantities from Fluent data
+- `interpolator.py` — interpolates Fluent velocity onto BL solver `(s, y)` grids
+- `comparison.py` — `BLComparisonRunner`, metrics (`L2`, `Linf`, `RMS`, `MAE`, relative)
+
+Plot generation scripts:
+
+- `validation/scripts/plot_bl_fluent_difference.py` — difference contours/envelopes + metrics report
+- `validation/scripts/plot_bl_fluent_side_by_side.py` — absolute BL-vs-Fluent side-by-side plots
 
 ### Case Generation
 
@@ -56,6 +75,8 @@ The validation workflow is executed through scripts in `validation/scripts/`:
 
 | Script | Step | Description |
 |--------|------|-------------|
+| `plot_bl_fluent_difference.py` | Current-1 | BL Fluent difference plots |
+| `plot_bl_fluent_side_by_side.py` | Current-2 | BL Fluent side-by-side absolute plots |
 | `generate_base_case.py` | 1 | Create OpenFOAM case from panel case YAML |
 | `run_of_convergence.py` | 2 | Run OpenFOAM mesh convergence study |
 | `run_panel_convergence.py` | 3 | Run panel method at multiple mesh levels |

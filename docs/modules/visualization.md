@@ -2,6 +2,14 @@
 
 The visualization module (`visualization`) provides matplotlib-based plotting for panel method results, including contours, streamlines, pressure distributions, surface envelopes, and comparison plots.
 
+Boundary-layer plotting has been split into focused modules:
+
+- `bl_line_plots.py` (integral quantity lines + composite)
+- `bl_envelope_plots.py` (BL envelopes)
+- `bl_velocity_plots.py` (reconstructed velocity fields)
+- `bl_fluent_comparison_plots.py` (Fluent comparison plots)
+- `bl_plots.py` (compatibility re-export layer)
+
 ## Core Classes
 
 ### Visualizer

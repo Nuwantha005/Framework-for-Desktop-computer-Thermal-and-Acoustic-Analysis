@@ -1,6 +1,6 @@
 # Panel Method Solver
 
-A 2D panel method solver for potential flow analysis, designed as part of a framework for desktop computer thermal and acoustic analysis. The solver implements constant-strength source panels with Neumann boundary conditions and includes an OpenFOAM-based validation pipeline for comparing results against CFD.
+A 2D panel method solver for potential flow analysis, designed as part of a framework for desktop computer thermal and acoustic analysis. The solver implements constant-strength source panels with Neumann boundary conditions and includes validation tooling against external CFD data.
 
 ## Module Status
 
@@ -11,7 +11,7 @@ A 2D panel method solver for potential flow analysis, designed as part of a fram
 | I/O | ✅ Working | YAML case files, JSON geometry, case loading and export |
 | Post-processing | ✅ Working | Pressure, velocity potential, stream function, vorticity pipeline |
 | Visualization | ✅ Working | Contours, streamlines, Cp plots, surface envelopes, comparison |
-| Validation Pipeline | ✅ Working | OpenFOAM case generation, meshing, grid independence, comparison |
+| Validation Pipeline | ✅ Working | Fluent-based BL comparison + legacy OpenFOAM panel validation |
 | Vortex Panels | 🔲 Planned | Lifting bodies with Kutta condition |
 | Higher-Order Panels | 🔲 Planned | Linear and quadratic strength distributions |
 | Viscous BL Solver | 🔲 Planned | Von Kármán momentum integral method |
@@ -79,7 +79,7 @@ panel-method-solver/
 │   │   └── panel2d/                    # 2D panel method implementations
 │   ├── postprocessing/                 # FieldData, ProcessorPipeline, processors
 │   └── visualization/                  # Visualizer, VelocityField2D, comparison
-├── validation/                         # OpenFOAM validation pipeline
+├── validation/                         # Validation scripts (Fluent BL + legacy OpenFOAM)
 ├── cases/                              # Case definitions (YAML + geometry)
 ├── demos/                              # Example scripts
 ├── docs/                               # This documentation

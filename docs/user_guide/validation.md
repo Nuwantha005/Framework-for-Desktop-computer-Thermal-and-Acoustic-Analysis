@@ -1,15 +1,52 @@
 # Running Validation
 
-The validation pipeline compares panel method results against OpenFOAM CFD simulations. It automates case generation, mesh convergence studies, and quantitative comparison.
+Validation currently uses two tracks:
 
-## Prerequisites
+- Active: Fluent-based boundary-layer (BL) comparison
+- Legacy: OpenFOAM-based panel-method comparison
+
+## Fluent BL Validation (Active)
+
+### Prerequisites
+
+- Fluent export files available under `cases/<case>/fluent_case/export/viscous_bl/`
+- BL reconstruction enabled during solve (handled by the scripts)
+
+### Commands
+
+From repository root:
+
+```bash
+python validation/scripts/plot_bl_fluent_difference.py cases/cylinder_flow
+python validation/scripts/plot_bl_fluent_side_by_side.py cases/cylinder_flow
+```
+
+Common options:
+
+- `--compare-profile thwaites`
+- `--profiles blasius thwaites`
+- `--mesh-level -1`
+- `--solver-type linear_source`
+- `--output-dir <path>`
+- `--show-plots`
+
+Default output directories:
+
+- `cases/<case>/out/boundary_layer/fluent_comparison/difference/`
+- `cases/<case>/out/boundary_layer/fluent_comparison/side_by_side/`
+
+## OpenFOAM Panel Validation (Legacy)
+
+The OpenFOAM pipeline remains for historical panel-method validation.
+
+### Prerequisites
 
 - **OpenFOAM**: v2312 or later (ESI version) installed and sourced
 - **foamlib**: `pip install foamlib` (OpenFOAM case generation)
 - **trimesh**: `pip install trimesh` (STL geometry export)
 - Both should be installed in the `fyp` mamba environment
 
-## Pipeline Overview
+## Legacy Pipeline Overview
 
 The validation workflow consists of five sequential scripts in `validation/scripts/`:
 

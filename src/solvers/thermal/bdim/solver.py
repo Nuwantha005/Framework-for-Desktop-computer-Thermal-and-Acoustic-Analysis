@@ -1,7 +1,28 @@
+"""
+BDIM (Boundary-Domain Integral Method) thermal solver.
+
+Full boundary integral formulation for thermal boundary layer based on
+Gao et al. (2013). More accurate than Reynolds analogy for complex
+geometries, separated regions, and non-uniform wall temperature.
+
+This solver requires domain mesh data (velocity field, gradients, pressure)
+in addition to boundary data. Use ReynoldsAnalogyThermal for surface-only
+calculations.
+
+References
+----------
+* Gao, X.-W., Peng, H.-F., & Liu, J. (2013). A boundary-domain integral
+  equation method for solving convective heat transfer problems.
+  International Journal of Heat and Mass Transfer.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
 import numpy as np
 from numpy.typing import NDArray
 
-from ..base import ThermalSolver, ThermalResult
+from ..base import ThermalResult, ThermalFieldData
 from ..utils import compute_total_heat_rate
 from .discretization import (
     assemble_boundary_matrices,
@@ -9,155 +30,273 @@ from .discretization import (
     assemble_boundary_domain_coupling
 )
 
-class BDIMThermalSolver(ThermalSolver):
+
+@dataclass
+class BDIMInput:
     """
-    Implements the full Boundary-Domain Integral Method for the thermal boundary layer
-    governed by Gao et al. (2013). This solver directly computes surface distributions 
-    by solving a fully coupled linear matrix system taking field mapping kinematics and
-    boundary heat flux constraints as strict inputs.
-    """
+    Input data structure for BDIM thermal solver.
     
-    def __init__(self,
-                 fluid_properties: dict,          # dict containing 'rho', 'mu', 'k', 'cp'
-                 T_inf: float,
-                 # Boundary Arrays
-                 arc_length: NDArray,
-                 nodes_b: NDArray,                # (N, 2)
-                 normals_b: NDArray,              # (N, 2)
-                 lengths_b: NDArray,              # (N,)
-                 u_b: NDArray,                    # (N, 2) velocity vector along boundary
-                 # Domain Field Arrays
-                 nodes_domain: NDArray,           # (K, 2)
-                 areas_domain: NDArray,           # (K,)
-                 u_domain: NDArray,               # (K, 2) velocity vector in domain
-                 grad_u_domain: NDArray,          # (K, 2, 2) velocity gradient tensor matrix
-                 p_domain: NDArray,               # (K,) explicit fluid pressure 
-                 # BC
-                 q_wall: NDArray = None,          # (N,) known heat flux
-                 T_wall: NDArray = None           # (N,) known temperature
-                 ):
+    Contains both boundary and domain field data required for the
+    boundary-domain integral formulation.
+    
+    Attributes:
+        arc_length: Arc-length along boundary [m], shape (N,).
+        nodes_b: Boundary node positions [m], shape (N, 2).
+        normals_b: Boundary outward normals [-], shape (N, 2).
+        lengths_b: Boundary panel lengths [m], shape (N,).
+        u_b: Velocity at boundary [m/s], shape (N, 2).
+        x_b: Boundary x-coordinates [m], shape (N,). For result output.
+        y_b: Boundary y-coordinates [m], shape (N,). For result output.
+        nodes_domain: Domain node positions [m], shape (K, 2).
+        areas_domain: Domain cell areas [m²], shape (K,).
+        u_domain: Velocity in domain [m/s], shape (K, 2).
+        grad_u_domain: Velocity gradient tensor, shape (K, 2, 2).
+            Format: [[du/dx, du/dy], [dv/dx, dv/dy]]
+        p_domain: Pressure in domain [Pa], shape (K,).
+        side: Surface side identifier ("upper" or "lower").
+        grid_shape: Optional (M, Ny) shape for reshaping domain data.
+        y_normal: Optional wall-normal distances [m], shape (M, Ny).
+            Needed for field visualization output.
+    """
+    arc_length: NDArray[np.float64]
+    nodes_b: NDArray[np.float64]
+    normals_b: NDArray[np.float64]
+    lengths_b: NDArray[np.float64]
+    u_b: NDArray[np.float64]
+    x_b: NDArray[np.float64]
+    y_b: NDArray[np.float64]
+    nodes_domain: NDArray[np.float64]
+    areas_domain: NDArray[np.float64]
+    u_domain: NDArray[np.float64]
+    grad_u_domain: NDArray[np.float64]
+    p_domain: NDArray[np.float64]
+    side: str = "upper"
+    grid_shape: Optional[tuple] = None
+    y_normal: Optional[NDArray[np.float64]] = None
+
+
+@dataclass
+class BDIMConfig:
+    """
+    Configuration for BDIM thermal solver.
+    
+    Attributes:
+        T_inf: Freestream temperature [K].
+        rho: Fluid density [kg/m³].
+        mu: Dynamic viscosity [Pa·s].
+        k: Thermal conductivity [W/mK].
+        cp: Specific heat capacity [J/kgK].
+        q_wall: Heat flux BC [W/m²], shape (N,) or scalar.
+        T_wall: Temperature BC [K], shape (N,) or scalar.
+    """
+    T_inf: float
+    rho: float = 1.225
+    mu: float = 1.81e-5
+    k: float = 0.026
+    cp: float = 1005.0
+    q_wall: Optional[NDArray[np.float64]] = None
+    T_wall: Optional[NDArray[np.float64]] = None
+    
+    def __post_init__(self):
+        if self.q_wall is None and self.T_wall is None:
+            raise ValueError(
+                "Must provide either q_wall (heat flux) or T_wall (temperature) BC"
+            )
+    
+    @property
+    def Pr(self) -> float:
+        """Prandtl number."""
+        return (self.cp * self.mu) / self.k
+
+
+class BDIMThermalSolver:
+    """
+    Boundary-Domain Integral Method thermal solver.
+    
+    Solves the energy equation using boundary integral formulation with
+    domain coupling. More accurate than Reynolds analogy but requires
+    full domain velocity/pressure field data.
+    
+    This solver uses its own input format (BDIMInput) rather than the
+    common ThermalBLInput because it requires domain mesh data that
+    isn't available from the standard BL solver output.
+    
+    To use with reconstructed BL field data, see the planned
+    `create_bdim_input_from_bl_field()` helper function.
+    
+    Example::
+    
+        from solvers.thermal.bdim import BDIMThermalSolver, BDIMInput, BDIMConfig
         
-        # We manually map the dict to the base solver properties requested in the interface
-        self.rho = fluid_properties.get('rho', 1.225)
-        self.mu = fluid_properties.get('mu', 1.81e-5)
-        self.cp = fluid_properties.get('cp', 1005.0)
-        
-        # Build strict signature variables for base
-        prandtl = (self.cp * self.mu) / fluid_properties.get('k', 0.026)
-        
-        super().__init__(
-            bl_result=None, # Not explicitly required for this mode (using full domain instead)
-            T_wall=T_wall,
-            T_inf=T_inf,
-            Pr=prandtl,
-            k=fluid_properties.get('k', 0.026),
-            q_wall=q_wall
+        # Prepare domain data from BL field reconstruction
+        bdim_input = BDIMInput(
+            arc_length=s,
+            nodes_b=boundary_nodes,
+            normals_b=normals,
+            lengths_b=panel_lengths,
+            u_b=boundary_velocity,
+            x_b=x, y_b=y,
+            nodes_domain=domain_nodes,
+            areas_domain=cell_areas,
+            u_domain=velocity_field,
+            grad_u_domain=velocity_gradients,
+            p_domain=pressure_field,
         )
         
-        self.arc_length = arc_length
-        self.nodes_b = nodes_b
-        self.normals_b = normals_b
-        self.lengths_b = lengths_b
-        self.u_b = u_b
+        config = BDIMConfig(T_inf=300.0, q_wall=1000.0)
+        solver = BDIMThermalSolver(bdim_input, config)
+        result = solver.solve()
+    """
+    
+    def __init__(self, bdim_input: BDIMInput, config: BDIMConfig):
+        """
+        Initialize BDIM thermal solver.
         
-        self.nodes_domain = nodes_domain
-        self.areas_domain = areas_domain
-        self.u_domain = u_domain
-        self.grad_u_domain = grad_u_domain
-        self.p_domain = p_domain
-
+        Args:
+            bdim_input: Domain and boundary data
+            config: Solver configuration with fluid properties and BCs
+        """
+        self.input = bdim_input
+        self.config = config
+        
+        # Store fluid properties for convenience
+        self.rho = config.rho
+        self.mu = config.mu
+        self.cp = config.cp
+        self.k = config.k
+    
+    @property
+    def name(self) -> str:
+        return "bdim"
+    
     def _compute_hydrodynamic_source_w(self) -> tuple[NDArray, NDArray]:
         """
-        Calculates the internal domain mechanical/convective interaction vectors {w}.
-        Decomposes directly into structural constant mappings {c_w} and boundary proportional elements.
+        Calculate internal domain mechanical/convective interaction vectors {w}.
+        
+        Decomposes into structural constant mappings {c_w} and boundary
+        proportional elements for the temperature coupling.
+        
+        Returns:
+            (c_w_I, rho_cv_u_I): Constant and temperature-dependent parts
         """
-        K = len(self.nodes_domain)
+        K = len(self.input.nodes_domain)
         c_w_I = np.zeros((K, 2))
         
         for k in range(K):
-            u_vec = self.u_domain[k]
-            grad_u = self.grad_u_domain[k]  # [[dudx, dudy], [dvdx, dvdy]]
-            p = self.p_domain[k]
+            u_vec = self.input.u_domain[k]
+            grad_u = self.input.grad_u_domain[k]  # [[dudx, dudy], [dvdx, dvdy]]
+            p = self.input.p_domain[k]
             
-            # Form shear strain rate tensor
+            # Form shear strain rate tensor S = grad_u + grad_u.T
             S = grad_u + grad_u.T
             viscous_term = self.mu * (S @ u_vec)
             
             # Form kinetic / pressure energy structural tensor
             kinetic_term = (p + 0.5 * self.rho * np.dot(u_vec, u_vec)) * u_vec
             c_w_I[k] = viscous_term - kinetic_term
-            
-        rho_cv_u_I = self.rho * self.cp * self.u_domain  # Specific heat capacity mapping
+        
+        # Specific heat capacity mapping (temperature-dependent part)
+        rho_cv_u_I = self.rho * self.cp * self.input.u_domain
         
         return c_w_I, rho_cv_u_I
-
+    
     def solve(self) -> ThermalResult:
-        N = len(self.nodes_b)
-        K = len(self.nodes_domain)
+        """
+        Solve thermal boundary layer using BDIM formulation.
+        
+        Returns:
+            ThermalResult with wall temperature, heat transfer, etc.
+        
+        Raises:
+            NotImplementedError: If Dirichlet BC (known T_wall) is requested.
+        """
+        N = len(self.input.nodes_b)
+        K = len(self.input.nodes_domain)
         
         # 1. Assemble foundational Green's Function integration kernels
-        H, G = assemble_boundary_matrices(self.nodes_b, self.normals_b, self.lengths_b)
+        H, G = assemble_boundary_matrices(
+            self.input.nodes_b, self.input.normals_b, self.input.lengths_b
+        )
         
-        E_b_dom = assemble_domain_matrices(self.nodes_b, self.nodes_domain, self.areas_domain)
-        EC_b = assemble_boundary_domain_coupling(self.nodes_b, self.nodes_b, self.normals_b, self.lengths_b)
+        E_b_dom = assemble_domain_matrices(
+            self.input.nodes_b, self.input.nodes_domain, self.input.areas_domain
+        )
+        EC_b = assemble_boundary_domain_coupling(
+            self.input.nodes_b, self.input.nodes_b,
+            self.input.normals_b, self.input.lengths_b
+        )
         
-        E_I_dom = assemble_domain_matrices(self.nodes_domain, self.nodes_domain, self.areas_domain)
-        EC_I = assemble_boundary_domain_coupling(self.nodes_domain, self.nodes_b, self.normals_b, self.lengths_b)
+        E_I_dom = assemble_domain_matrices(
+            self.input.nodes_domain, self.input.nodes_domain, self.input.areas_domain
+        )
+        EC_I = assemble_boundary_domain_coupling(
+            self.input.nodes_domain, self.input.nodes_b,
+            self.input.normals_b, self.input.lengths_b
+        )
         
         # 2. Reconstruct internal mechanical dissipation mappings
         c_w_I, rho_cv_u_I = self._compute_hydrodynamic_source_w()
         
-        c_w_b = np.zeros((N, 2)) # Assuming explicit gradient boundaries are neglected analytically
-        rho_cv_u_b = self.rho * self.cp * self.u_b
+        c_w_b = np.zeros((N, 2))  # Boundary gradient terms (simplified)
+        rho_cv_u_b = self.rho * self.cp * self.input.u_b
         
         # Formulate decoupled dependencies separating {T_b} and {T_I} variables
-        D_b = np.zeros((N, K))
-        for i in range(N):
-            for k in range(K):
-                D_b[i, k] = np.dot(E_b_dom[i, k], rho_cv_u_I[k])
-                
-        D_I = np.zeros((K, K))
-        for i in range(K):
-            for k in range(K):
-                if i != k:
-                    D_I[i, k] = np.dot(E_I_dom[i, k], rho_cv_u_I[k])
-                    
-        B_b = np.zeros((N, N))
-        for i in range(N):
-            for j in range(N):
-                B_b[i, j] = np.dot(EC_b[i, j], rho_cv_u_b[j])
-                
-        B_I = np.zeros((K, N))
-        for i in range(K):
-            for j in range(N):
-                B_I[i, j] = np.dot(EC_I[i, j], rho_cv_u_b[j])
-                
-        # Knowns vector mapping
-        const_b = np.sum(EC_b * c_w_b[:, None, :], axis=2).sum(axis=1) - np.sum(E_b_dom * c_w_I[:, None, :], axis=2).sum(axis=1)
-        const_I = np.sum(EC_I * c_w_b[:, None, :], axis=2).sum(axis=1) - np.sum(E_I_dom * c_w_I[:, None, :], axis=2).sum(axis=1)
+        # Vectorized: D_b[i, k] = E_b_dom[i, k, :] · rho_cv_u_I[k, :]
+        D_b = np.sum(E_b_dom * rho_cv_u_I[None, :, :], axis=2)
         
-        # 3. Impose exact linear combinations constraints and execute algebraic inversion
-        if self.q_wall is not None:
-            # We must solve simultaneously for {T_b} (Boundary temperatures) and {T_I}
-            from .kernels import temp_fundamental, temp_normal_derivative
+        # D_I[i, k] = E_I_dom[i, k, :] · rho_cv_u_I[k, :] for i != k
+        D_I = np.sum(E_I_dom * rho_cv_u_I[None, :, :], axis=2)
+        np.fill_diagonal(D_I, 0.0)  # Zero out diagonal
+        
+        # B_b[i, j] = EC_b[i, j, :] · rho_cv_u_b[j, :]
+        B_b = np.sum(EC_b * rho_cv_u_b[None, :, :], axis=2)
+        
+        # B_I[i, j] = EC_I[i, j, :] · rho_cv_u_b[j, :]
+        B_I = np.sum(EC_I * rho_cv_u_b[None, :, :], axis=2)
+        
+        # Knowns vector mapping
+        const_b = (
+            np.sum(EC_b * c_w_b[:, None, :], axis=2).sum(axis=1)
+            - np.sum(E_b_dom * c_w_I[None, :, :], axis=2).sum(axis=1)
+        )
+        const_I = (
+            np.sum(EC_I * c_w_b[None, :, :], axis=2).sum(axis=1)
+            - np.sum(E_I_dom * c_w_I[None, :, :], axis=2).sum(axis=1)
+        )
+        
+        # 3. Impose constraints and solve
+        if self.config.q_wall is not None:
+            # Neumann BC: heat flux given, solve for T_b and T_I
+            from .discretization import (
+                _compute_distances, 
+                _temp_fundamental_vectorized,
+                _temp_derivative_vectorized,
+            )
             
-            # Must approximate G_I and H_I dependencies
-            G_I = np.zeros((K, N))
-            H_I = np.zeros((K, N))
-            for i in range(K):
-                for j in range(N):
-                    G_I[i, j] = -temp_fundamental(self.nodes_domain[i], self.nodes_b[j]) * self.lengths_b[j]
-                    H_I[i, j] = temp_normal_derivative(self.nodes_domain[i], self.nodes_b[j], self.normals_b[j]) * self.lengths_b[j]
-
-            # Enforce q_w uniformly if constant scalar is passed
-            q_b = np.full(N, self.q_wall) if isinstance(self.q_wall, (int, float)) else self.q_wall
+            # Compute G_I and H_I using vectorized operations
+            r_I, vec_I = _compute_distances(self.input.nodes_domain, self.input.nodes_b)
+            T_star_I = _temp_fundamental_vectorized(r_I)
+            grad_T_star_I = _temp_derivative_vectorized(r_I, vec_I)
+            
+            # G_I[i, j] = -T*[i, j] * lengths_b[j]
+            G_I = -T_star_I * self.input.lengths_b[None, :]
+            
+            # H_I[i, j] = grad_T*[i, j] · normals_b[j] * lengths_b[j]
+            H_I = np.sum(grad_T_star_I * self.input.normals_b[None, :, :], axis=2)
+            H_I = H_I * self.input.lengths_b[None, :]
+            
+            # Expand q_wall if scalar
+            if isinstance(self.config.q_wall, (int, float)):
+                q_b = np.full(N, self.config.q_wall)
+            else:
+                q_b = np.asarray(self.config.q_wall)
             
             Y_b = G @ q_b + const_b
             Y_I = G_I @ q_b + const_I
             
-            # The structured full matrix system block
+            # Build and solve the full matrix system
             Sys_mat = np.block([
-                [H - B_b,             D_b],
+                [H - B_b, D_b],
                 [H_I - B_I, np.eye(K) + D_I]
             ])
             
@@ -165,25 +304,75 @@ class BDIMThermalSolver(ThermalSolver):
             
             solution = np.linalg.solve(Sys_mat, Sys_rhs)
             T_b = solution[:N]
+            T_I = solution[N:]  # Domain temperatures
             
         else:
-            raise NotImplementedError("Dirichlet (Known T_w, Unknown q_w) condition matrix resolution framework mapping not configured for simplified object structure.")
+            raise NotImplementedError(
+                "Dirichlet BC (known T_w, unknown q_w) not yet implemented. "
+                "Use heat flux BC (q_wall) instead."
+            )
         
-        # 4. Integrate finalized dimensional metrics maps: Nusselt, Heat Transfer Coef h(s)
-        delta_T = T_b - self.T_inf
-        h = np.divide(q_b, delta_T, out=np.zeros_like(q_b), where=(np.abs(delta_T) > 1e-10))
+        # 4. Compute derived quantities
+        delta_T_wall = T_b - self.config.T_inf
+        h = np.divide(
+            q_b, delta_T_wall,
+            out=np.zeros_like(q_b),
+            where=(np.abs(delta_T_wall) > 1e-10)
+        )
         
-        characteristic_L = float(np.max(self.arc_length)) if len(self.arc_length) > 0 else 1.0
-        nu_s = (h * characteristic_L) / self.k
+        L_char = float(np.max(self.input.arc_length)) if len(self.input.arc_length) > 0 else 1.0
+        nusselt = (h * L_char) / self.k
         
-        total_q = compute_total_heat_rate(q_b, self.arc_length)
+        total_q = compute_total_heat_rate(q_b, self.input.arc_length)
+        
+        # 5. Build field data if grid shape is available
+        field_data = None
+        if self.input.grid_shape is not None and self.input.y_normal is not None:
+            M, Ny = self.input.grid_shape
+            # Reshape domain data to (M, Ny) grid
+            T_field = T_I.reshape(M, Ny)
+            x_domain = self.input.nodes_domain[:, 0].reshape(M, Ny)
+            y_domain = self.input.nodes_domain[:, 1].reshape(M, Ny)
+            
+            field_data = ThermalFieldData(
+                s=self.input.arc_length,
+                y_normal=self.input.y_normal,
+                x=x_domain,
+                y=y_domain,
+                T=T_field,
+                T_inf=self.config.T_inf,
+                side=self.input.side,
+            )
+        
+        # Estimate thermal BL thickness from field data
+        thermal_bl_thickness = np.zeros_like(self.input.arc_length)
+        if field_data is not None:
+            # Find where T drops to 99% of (T_wall - T_inf)
+            T_field = field_data.T
+            T_wall = T_field[:, 0]
+            for i in range(N):
+                if abs(T_wall[i] - self.config.T_inf) > 1e-10:
+                    T_99 = self.config.T_inf + 0.99 * (T_wall[i] - self.config.T_inf)
+                    # Find first index where T < T_99
+                    for j in range(1, T_field.shape[1]):
+                        if T_field[i, j] <= T_99:
+                            thermal_bl_thickness[i] = self.input.y_normal[i, j]
+                            break
+                    else:
+                        # Use last y value if T never reaches T_99
+                        thermal_bl_thickness[i] = self.input.y_normal[i, -1]
         
         return ThermalResult(
-            arc_length=self.arc_length,
-            nusselt=nu_s,
+            side=self.input.side,
+            arc_length=self.input.arc_length,
+            x=self.input.x_b,
+            y=self.input.y_b,
+            wall_temperature=T_b,
             heat_transfer_coeff=h,
+            nusselt=nusselt,
             wall_heat_flux=q_b,
-            thermal_bl_thickness=np.zeros_like(self.arc_length), # Stably mocked (as pure object ignores secondary field metrics)
+            thermal_bl_thickness=thermal_bl_thickness,
             total_heat_rate=total_q,
-            wall_temperature=T_b
+            solver_type=self.name,
+            field=field_data,
         )

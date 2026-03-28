@@ -195,6 +195,23 @@ class BoundaryLayerConfig(BaseModel):
     )
 
 
+class ThermalConfig(BaseModel):
+    """Thermal boundary layer solver configuration (optional section in case.yaml)."""
+    enabled: bool = Field(
+        default=False,
+        description="Enable thermal boundary layer computation"
+    )
+    solver: Literal["reynolds_analogy", "bdim"] = Field(
+        default="reynolds_analogy",
+        description="Thermal solver type: reynolds_analogy (simple, fast) or bdim (full integral method)"
+    )
+    envelope_scale: float = Field(
+        default=0.15,
+        gt=0,
+        description="Scale factor for thermal envelope plots"
+    )
+
+
 class OutputConfig(BaseModel):
     """Output configuration."""
     directory: str = Field(
@@ -236,6 +253,11 @@ class FluidConfig(BaseModel):
         default=None,
         gt=0,
         description="Specific heat at constant pressure [J/(kg·K)]"
+    )
+    freestream_temperature: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Freestream temperature [K] (optional, for thermal calculations)"
     )
     gravity: float = Field(
         default=0.0,
@@ -344,6 +366,11 @@ class SimulationConfig(BaseModel):
     boundary_layer: BoundaryLayerConfig = Field(
         default_factory=BoundaryLayerConfig,
         description="Boundary layer solver settings (optional)"
+    )
+    
+    thermal: ThermalConfig = Field(
+        default_factory=ThermalConfig,
+        description="Thermal boundary layer solver settings (optional)"
     )
     
     class Config:

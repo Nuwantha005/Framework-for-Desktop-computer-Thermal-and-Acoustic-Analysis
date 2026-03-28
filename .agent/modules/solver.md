@@ -1,5 +1,5 @@
 # Solver Module State
-**Last modified**: 2026-03-16 (BL solver refactorization phases 1–6)
+**Last modified**: 2026-03-28 (Thermal BL solver integration)
 
 ## Files
 - `solvers/base.py` — `Solver` ABC: `solve()`, `surface_velocity`, `velocity_at(points)`, `is_solved`, `mesh`
@@ -28,6 +28,11 @@
 - `solvers/boundary_layer/profiles/power_law.py` — `PowerLawProfile(n=7)`: turbulent 1/n-th law, H=(n+2)/n, reconstruction via algebraic (y/δ)^(1/n)
 - `solvers/boundary_layer/profiles/thwaites.py` — `ThwaitesProfile`: one-param laminar correlation, `quadrature_theta()` utility, configurable reconstruction pairing (falkner_skan or pohlhausen)
 - `solvers/boundary_layer/profiles/tables.py` — `BlasiusTable`, `FalknerSkanTable` (lazy singleton loaders with interpolation and ODE fallback)
+- `solvers/thermal/__init__.py` — package exports for thermal BL solver
+- `solvers/thermal/base.py` — `ThermalBLInput` (input from viscous BL), `ThermalResult` (output), `ThermalSolverConfig`, `ThermalSolver` ABC, `extract_thermal_input()` helper
+- `solvers/thermal/reynolds_analogy.py` — `ReynoldsAnalogyThermal(ThermalSolver)`: Chilton-Colburn analogy for laminar/turbulent BLs
+- `solvers/thermal/factory.py` — `ThermalSolverFactory`, `create_thermal_solver()`: factory for creating solvers from case config
+- `solvers/thermal/bdim/solver.py` — `BDIMThermalSolver`, `BDIMInput`, `BDIMConfig`: boundary-domain integral method (advanced, requires domain mesh)
 
 ## Public API
 - `SourcePanelSolver(mesh, v_inf=1.0, aoa=0.0)` → `.solve()` → `.Cp`, `.Vt`, `.sigma`, `.surface_velocity`, `.velocity_at(points)`
@@ -54,6 +59,13 @@
 - Tables: `blasius_table()`, `falkner_skan_table()` (module-level singleton accessors)
 - Transition: `michel_criterion(s, Ue, theta, nu) → TransitionResult`, `en_criterion(s, Ue, theta, nu, n_crit=9) → TransitionResult`
 - `ThwaitesProfile.quadrature_theta(s, Ue, nu)` — direct θ(s) via Thwaites' closed-form integral
+- `extract_thermal_input(bl_path_result, profile_name) → ThermalBLInput` — extracts thermal solver input from viscous BL
+- `ThermalBLInput` — common interface for viscous BL → thermal solver (arc_length, Ue, cf, coordinates)
+- `ThermalResult` — thermal solver output (T_w, h, Nu, q_w, δ_T, total_heat_rate)
+- `ThermalSolverConfig` — configuration (T_inf, Pr, k, rho, cp, q_wall or T_wall BC)
+- `ReynoldsAnalogyThermal(bl_input, config)` → `.solve()` → `ThermalResult`
+- `ThermalSolverFactory.create_from_case(case, bl_input)` → thermal solver from case config
+- `create_thermal_solver(type, bl_input, config)` → instantiate by type name
 
 ## Solver Comparison Workflow
 ```
@@ -63,6 +75,36 @@ Case → SolverComparisonRunner.run(["constant", "linear"], of_case_dir=...)
        → ComparisonResult (OF ref + SolverResult per solver + metrics + ranking)
        → SolverComparisonVisualizer.plot_all()
            → envelope, line, diff, metrics, ranking plots under <case>/out/solver_comparison/
+```
+
+## Thermal BL Workflow
+```
+Viscous BL (BoundaryLayerPathResult)
+  → extract_thermal_input(path, "thwaites")
+  → ThermalBLInput (s, Ue, cf, x, y)
+  → ThermalSolverConfig (T_inf, Pr, k, q_wall or T_wall)
+  → ReynoldsAnalogyThermal(input, config).solve()
+  → ThermalResult (T_w, h, Nu, q_w, δ_T per station)
+  → plot_thermal_two_sides(), plot_thermal_envelope_two_sides()
+```
+
+Case YAML thermal config example:
+```yaml
+thermal:
+  enabled: true
+  solver: "reynolds_analogy"
+  envelope_scale: 0.15
+
+fluid:
+  freestream_temperature: 300.0
+  thermal_conductivity: 0.026
+  specific_heat_cp: 1005.0
+
+components:
+  - name: "body"
+    boundary_condition:
+      type: "wall"
+      heat_flux: 500.0  # W/m² uniform
 ```
 
 ## Data Flow
@@ -90,7 +132,8 @@ Case → SolverComparisonRunner.run(["constant", "linear"], of_case_dir=...)
 - Quadratic strength panels
 - Curved panel geometry
 - Viscous-inviscid coupling: feed BL δ* back as transpiration velocity to panel method
-- Thermal BL solver (BDIM) consuming Ue(s) and BL result
+- BDIM thermal solver for full domain thermal field (requires domain mesh setup)
+- Validate thermal BL against OpenFOAM or analytical solutions
 - Validate BL solver against OpenFOAM wallShearStress on existing cases
 
 ## Known Issues
@@ -99,3 +142,4 @@ Case → SolverComparisonRunner.run(["constant", "linear"], of_case_dir=...)
 - Inner loops in `_velocity_at_points()` and influence computation — not yet vectorized
 - BL Falkner-Skan S(β) table values for β > 0.5 are approximate (derived from correlations)
 - BL e^N transition model uses simplified growth rate — adequate for engineering estimates
+- BDIM thermal solver requires manual domain setup — not integrated with case loader yet

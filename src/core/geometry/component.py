@@ -146,6 +146,7 @@ class Component:
         transform: Placement transform (local → global)
         bc_type: Boundary condition type ('wall', 'inlet', 'outlet', etc.)
         bc_value: BC value (e.g., normal velocity for inlet)
+        bc_heat_flux: Heat flux BC [W/m²] for thermal calculations (optional)
         metadata: Arbitrary additional data
     """
     
@@ -154,6 +155,7 @@ class Component:
     transform: Transform
     bc_type: str = "wall"
     bc_value: Optional[float] = None
+    bc_heat_flux: Optional[float] = None
     metadata: dict = None
     
     def __post_init__(self):

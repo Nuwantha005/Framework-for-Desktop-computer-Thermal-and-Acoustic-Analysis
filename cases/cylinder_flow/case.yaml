@@ -23,6 +23,7 @@ components:
       rotation_deg: 0.0
     boundary_condition:
       type: "wall"
+      heat_flux: 500.0  # W/m² uniform surface heat flux
 
 solver:
   type: "linear_source"
@@ -40,6 +41,9 @@ fluid:
   gravity: 0.0 # Optional
   reference_pressure: 101325.0
   reference_type: freestream
+  freestream_temperature: 300.0  # K
+  thermal_conductivity: 0.026    # W/mK (air)
+  specific_heat_cp: 1005.0       # J/kgK (air)
 
 boundary_layer:
   enabled: true
@@ -49,4 +53,9 @@ boundary_layer:
     - falkner_skan
     - pohlhausen
   transition_model: "michel"
+  envelope_scale: 0.15
+
+thermal:
+  enabled: true
+  solver: "reynolds_analogy"  # Options: reynolds_analogy
   envelope_scale: 0.15

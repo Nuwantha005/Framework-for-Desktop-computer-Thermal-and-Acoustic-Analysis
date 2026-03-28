@@ -126,6 +126,7 @@ class CaseLoader:
             bc_data = comp_config.boundary_condition
             bc_type = bc_data.get("type", "wall")
             bc_value = bc_data.get("value", None)
+            bc_heat_flux = bc_data.get("heat_flux", None)
             
             # local_mesh.normals = -local_mesh.normals
 
@@ -136,6 +137,7 @@ class CaseLoader:
                 transform=transform,
                 bc_type=bc_type,
                 bc_value=bc_value,
+                bc_heat_flux=bc_heat_flux,
                 metadata={}
             )
             

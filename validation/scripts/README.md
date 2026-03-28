@@ -9,7 +9,9 @@ This folder contains validation utilities for two tracks:
 
 Run from repository root.
 
-Difference-style plots:
+### Velocity Field Plots
+
+Difference-style plots (velocity contours, normalized contours, wrapped envelopes):
 
 ```bash
 python validation/scripts/plot_bl_fluent_difference.py cases/rounded_square
@@ -21,19 +23,43 @@ Side-by-side absolute plots:
 python validation/scripts/plot_bl_fluent_side_by_side.py cases/rounded_square
 ```
 
-Useful options (both scripts):
+### Wall Quantity Envelope Plots
 
-- `--compare-profile thwaites` (single profile)
-- `--profiles blasius thwaites` (BL solver profiles)
-- `--mesh-level -1`
-- `--solver-type linear_source`
-- `--output-dir <path>`
-- `--show-plots`
+Wall quantity envelopes (Ue, Cf, delta, Cp) wrapped around the body:
+
+```bash
+# Both side-by-side and overlay plots (default)
+python validation/scripts/plot_bl_fluent_wall_envelopes.py cases/rounded_square
+
+# Overlay only (both results on same body)
+python validation/scripts/plot_bl_fluent_wall_envelopes.py cases/rounded_square --mode overlay
+
+# Side-by-side only
+python validation/scripts/plot_bl_fluent_wall_envelopes.py cases/rounded_square --mode side_by_side
+
+# Specific quantities
+python validation/scripts/plot_bl_fluent_wall_envelopes.py cases/rounded_square --quantities Ue Cf
+
+# 2x2 grid of all quantities
+python validation/scripts/plot_bl_fluent_wall_envelopes.py cases/rounded_square --mode grid
+```
+
+### Common Options
+
+Useful options (all scripts):
+
+- `--compare-profile thwaites` (single profile for comparison)
+- `--profiles blasius thwaites` (BL solver profiles to solve)
+- `--mesh-level -1` (mesh refinement level index)
+- `--solver-type linear_source` (panel solver type)
+- `--output-dir <path>` (custom output directory)
+- `--show-plots` (display plots interactively)
 
 Default output folders:
 
 - `cases/<case>/out/boundary_layer/fluent_comparison/difference/`
 - `cases/<case>/out/boundary_layer/fluent_comparison/side_by_side/`
+- `cases/<case>/out/boundary_layer/fluent_comparison/wall_envelopes/`
 
 ## Boundary-Layer Single Solve Demo
 

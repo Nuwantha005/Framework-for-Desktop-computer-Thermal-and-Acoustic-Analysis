@@ -36,6 +36,11 @@ from .bl_plots import (
     plot_bl_fluent_contour_normalized_side_by_side,
     plot_bl_of_comparison,
 )
+from .bl_wall_envelope_plots import (
+    plot_wall_quantity_envelope_side_by_side,
+    plot_wall_quantity_envelope_overlay,
+    plot_wall_quantity_envelopes_grid,
+)
 
 # Legacy exports (prefer Visualizer for new code)
 from .mesh_plot import MeshPlotter, quick_plot_mesh, quick_plot_component, quick_plot_scene

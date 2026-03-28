@@ -109,3 +109,19 @@
   - `docs/modules/solver.md` — added architecture entry, factory listing, influence docs, file layout, planned table
   - `.agent/TASK_LOG.md` — this entry
 - **Status**: Complete
+
+## 2026-03-26
+### Add Wall Quantity Envelope Plots for BL-Fluent Comparison
+- **What was done**: Added wall quantity envelope plotting functions (Ue, Cf, δ, Cp) for comparing BL solver results against Fluent CFD. Created a new dedicated module to avoid bloating existing files. Two plot variants: side-by-side (BL left, Fluent right) and overlay (both on same body). Also added a 2x2 grid option for all four quantities.
+- **Files created**:
+  - `src/visualization/bl_wall_envelope_plots.py` — wall quantity envelope plot functions
+  - `validation/scripts/plot_bl_fluent_wall_envelopes.py` — validation script
+- **Files modified**:
+  - `src/visualization/__init__.py` — added exports for new functions
+  - `validation/scripts/README.md` — added usage documentation
+  - `.agent/TASK_LOG.md` — this entry
+- **New functions**:
+  - `plot_wall_quantity_envelope_side_by_side()` — side-by-side comparison
+  - `plot_wall_quantity_envelope_overlay()` — overlay on same body
+  - `plot_wall_quantity_envelopes_grid()` — 2x2 grid of all quantities
+- **Status**: Complete

@@ -327,8 +327,7 @@ class BDIMThermalSolver:
                 # Indices for outer edge (y -> inf) and inflow (x -> start)
                 outer_idx = np.arange(M) * Ny + (Ny - 1)
                 inflow_idx = np.arange(Ny)
-                outflow_idx = (M - 1) * Ny + np.arange(Ny)
-                bc_idx = np.unique(np.concatenate([outer_idx, inflow_idx, outflow_idx]))
+                bc_idx = np.unique(np.concatenate([outer_idx, inflow_idx]))
                 
                 sys_bc_idx = N + bc_idx
                 Sys_mat[sys_bc_idx, :] = 0.0

@@ -114,15 +114,19 @@ def plot_thermal_line(
     else:
         fig = ax.get_figure()
     
-    s = thermal_result.arc_length
-    vals = getattr(thermal_result, quantity)
+    s = np.asarray(thermal_result.arc_length)
+    vals = np.asarray(getattr(thermal_result, quantity))
+    
+    sort_idx = np.argsort(s)
+    s_plot = s[sort_idx]
+    vals_plot = vals[sort_idx]
     
     if color is None:
         color = _get_side_color(thermal_result.side)
     if label is None:
         label = thermal_result.solver_type or thermal_result.side
     
-    ax.plot(s, vals, color=color, linewidth=1.5, label=label)
+    ax.plot(s_plot, vals_plot, color=color, linewidth=1.5, label=label)
     
     ax.set_xlabel("Arc length $s$ [m]")
     ax.set_ylabel(_THERMAL_LABELS.get(quantity, quantity))

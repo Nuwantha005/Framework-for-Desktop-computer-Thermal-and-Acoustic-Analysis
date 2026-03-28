@@ -30,13 +30,14 @@ if TYPE_CHECKING:
 def compute_path_normals(
     x: NDArray[np.float64],
     y: NDArray[np.float64],
-) -> NDArray[np.float64]:
+) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
-    Compute outward unit normals for an open path (not closed body).
+    Compute outward unit normals and flow tangents for an open path (not closed body).
     
     Uses central differences for interior points and one-sided differences
     at endpoints. Assumes the path flows from stagnation outward, so the
-    "outward" normal points away from the body interior.
+    "outward" normal points away from the body interior. Tangents always
+    point in the flow direction.
     
     Args:
         x: Path x-coordinates, shape (K,)
@@ -44,9 +45,11 @@ def compute_path_normals(
     
     Returns:
         normals: Unit normal vectors, shape (K, 2)
+        tangents: Unit tangent vectors pointing in flow direction, shape (K, 2)
     """
     K = len(x)
     normals = np.zeros((K, 2), dtype=np.float64)
+    tangents = np.zeros((K, 2), dtype=np.float64)
     
     for i in range(K):
         # Central difference for interior, one-sided at ends
@@ -65,6 +68,9 @@ def compute_path_normals(
         if length > 1e-12:
             tx /= length
             ty /= length
+            
+        tangents[i, 0] = tx
+        tangents[i, 1] = ty
         
         # Rotate 90° to get normal (perpendicular to tangent)
         # For a path going left-to-right, (ty, -tx) points "up"
@@ -81,7 +87,7 @@ def compute_path_normals(
         # Normals point toward origin, flip them
         normals = -normals
     
-    return normals
+    return normals, tangents
 
 
 def transform_sy_to_xy(
@@ -300,7 +306,7 @@ def extract_bdim_input_from_bl_field(
         )
     
     # Compute outward normals along the path
-    normals = compute_path_normals(path_x, path_y)
+    normals, tangents = compute_path_normals(path_x, path_y)
     
     # Transform (s, y_normal) grid to physical (x, y)
     x_domain, y_domain = transform_sy_to_xy(
@@ -323,8 +329,8 @@ def extract_bdim_input_from_bl_field(
     u_domain = np.zeros((K, 2), dtype=np.float64)
     for i in range(M):
         # Tangent is perpendicular to normal
-        tx = -normals[i, 1]  # Rotate normal -90° to get tangent
-        ty = normals[i, 0]
+        tx = tangents[i, 0]
+        ty = tangents[i, 1]
         for j in range(Ny):
             idx = i * Ny + j
             u_domain[idx, 0] = bl_field.u[i, j] * tx
@@ -360,8 +366,8 @@ def extract_bdim_input_from_bl_field(
     # Boundary velocity (surface tangential velocity)
     u_b = np.zeros((M, 2), dtype=np.float64)
     for i in range(M):
-        tx = -normals[i, 1]
-        ty = normals[i, 0]
+        tx = tangents[i, 0]
+        ty = tangents[i, 1]
         # Surface velocity is 0 (no-slip), but we use Ue for the "edge" reference
         # Actually at wall, u=0. But BDIM needs the velocity at boundary nodes.
         # For now, set to 0 (no-slip wall condition)

@@ -43,13 +43,13 @@ def extract_panel_surface(case, openfoam_case_dir: Path):
     Returns:
         SurfaceData with Vt, Cp at panel centers
     """
-    from solvers.panel2d import SourcePanelSolver
+    from solvers.panel2d import LinearVortexPanelSolver
     from postprocessing.surface import SurfaceDataExtractor
     
     print(f"  Mesh: {case.num_panels} panels, {case.num_components} components")
     
     # Run solver
-    solver = SourcePanelSolver(case.mesh, v_inf=case.v_inf, aoa=case.aoa)
+    solver = LinearVortexPanelSolver(case.mesh, v_inf=case.v_inf, aoa=case.aoa)
     solver.solve()
     
     print(f"  Cp range: [{solver.Cp.min():.4f}, {solver.Cp.max():.4f}]")

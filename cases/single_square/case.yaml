@@ -26,7 +26,7 @@ components:
       type: "wall"
 
 solver:
-  type: "constant_source"
+  type: "linear_source"
   tolerance: 1.0e-10
 
 visualization:

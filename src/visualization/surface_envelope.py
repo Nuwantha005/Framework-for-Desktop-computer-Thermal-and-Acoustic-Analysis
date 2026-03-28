@@ -209,17 +209,22 @@ def plot_surface_envelope(
             # Use segments with individual colors
             for i in range(n):
                 i_next = (i + 1) % n
+                if np.isnan(envelope_x[i]) or np.isnan(envelope_x[i_next]):
+                    continue
                 quad_x = [x[i], envelope_x[i], envelope_x[i_next], x[i_next]]
                 quad_y = [y[i], envelope_y[i], envelope_y[i_next], y[i_next]]
                 color = cmap(norm((plot_values[i] + plot_values[i_next]) / 2))
                 ax.fill(quad_x, quad_y, color=color, alpha=envelope_alpha, 
                        edgecolor='none', zorder=1)
         else:
-            # Single color fill
-            polygon_x = np.concatenate([x, envelope_x[::-1], [x[0]]])
-            polygon_y = np.concatenate([y, envelope_y[::-1], [y[0]]])
-            ax.fill(polygon_x, polygon_y, color=envelope_color, 
-                   alpha=envelope_alpha, zorder=1)
+            # Single color fill with contiguous segments
+            valid_mask = ~(np.isnan(envelope_x) | np.isnan(envelope_y) | np.isnan(x) | np.isnan(y))
+            segments = np.ma.clump_unmasked(np.ma.masked_where(~valid_mask, envelope_x))
+            for seg in segments:
+                polygon_x = np.concatenate([x[seg], envelope_x[seg][::-1]])
+                polygon_y = np.concatenate([y[seg], envelope_y[seg][::-1]])
+                ax.fill(polygon_x, polygon_y, color=envelope_color, 
+                       alpha=envelope_alpha, zorder=1)
     
     # Plot whiskers (lines from body to envelope)
     if show_whiskers:
@@ -246,25 +251,42 @@ def plot_surface_envelope(
     
     # Plot envelope curve
     if show_envelope:
-        env_x = np.append(envelope_x, envelope_x[0])
-        env_y = np.append(envelope_y, envelope_y[0])
-        
+        valid_mask = ~(np.isnan(envelope_x) | np.isnan(envelope_y))
+        segments = np.ma.clump_unmasked(np.ma.masked_where(~valid_mask, envelope_x))
+        is_fully_closed = len(segments) == 1 and segments[0].start == 0 and segments[0].stop == len(envelope_x)
+
         if colormap is not None:
             # Colored envelope segments
-            points = np.column_stack([env_x, env_y]).reshape(-1, 1, 2)
-            segments = np.concatenate([points[:-1], points[1:]], axis=1)
-            
-            # Use midpoint values for segment colors
+            # Apply mask to segment values
             segment_values = (plot_values + np.roll(plot_values, -1)) / 2
-            segment_values = np.append(segment_values, segment_values[0])
             
-            lc = LineCollection(segments[:-1], cmap=cmap, norm=norm,
-                               linewidths=envelope_linewidth, zorder=5)
-            lc.set_array(segment_values[:-1])
-            ax.add_collection(lc)
+            for seg in segments:
+                seg_x = envelope_x[seg]
+                seg_y = envelope_y[seg]
+                seg_vals = segment_values[seg]
+                if is_fully_closed:
+                    seg_x = np.append(seg_x, seg_x[0])
+                    seg_y = np.append(seg_y, seg_y[0])
+                    seg_vals = np.append(seg_vals, seg_vals[0])
+                
+                points = np.column_stack([seg_x, seg_y]).reshape(-1, 1, 2)
+                if len(points) < 2:
+                    continue
+                line_segments = np.concatenate([points[:-1], points[1:]], axis=1)
+                
+                lc = LineCollection(line_segments, cmap=cmap, norm=norm,
+                                   linewidths=envelope_linewidth, zorder=5)
+                lc.set_array(seg_vals[:-1])
+                ax.add_collection(lc)
         else:
-            ax.plot(env_x, env_y, color=envelope_color, 
-                   linewidth=envelope_linewidth, zorder=5, label='Envelope')
+            for i, seg in enumerate(segments):
+                seg_x = envelope_x[seg]
+                seg_y = envelope_y[seg]
+                if is_fully_closed:
+                    seg_x = np.append(seg_x, seg_x[0])
+                    seg_y = np.append(seg_y, seg_y[0])
+                ax.plot(seg_x, seg_y, color=envelope_color, 
+                       linewidth=envelope_linewidth, zorder=5, label='Envelope' if i == 0 else "")
     
     # Add colorbar
     if colormap is not None and show_colorbar:
@@ -365,21 +387,29 @@ def plot_surface_envelope_comparison(
         envelope_x = x + displacements * normals[:, 0]
         envelope_y = y + displacements * normals[:, 1]
         
-        # Close envelope
-        env_x = np.append(envelope_x, envelope_x[0])
-        env_y = np.append(envelope_y, envelope_y[0])
+        # Find contiguous valid segments
+        valid_mask = ~(np.isnan(envelope_x) | np.isnan(envelope_y) | np.isnan(x) | np.isnan(y))
+        segments = np.ma.clump_unmasked(np.ma.masked_where(~valid_mask, envelope_x))
+        is_fully_closed = len(segments) == 1 and segments[0].start == 0 and segments[0].stop == len(envelope_x)
         
         color = colors[i] if isinstance(colors[i], str) else colors[i]
         
-        # Plot filled envelope
-        polygon_x = np.concatenate([x, envelope_x[::-1], [x[0]]])
-        polygon_y = np.concatenate([y, envelope_y[::-1], [y[0]]])
-        ax.fill(polygon_x, polygon_y, color=color, alpha=envelope_alpha, 
-               edgecolor='none', zorder=1+i)
-        
-        # Plot envelope line
-        ax.plot(env_x, env_y, color=color, linewidth=envelope_linewidth, 
-               zorder=5+i, label=label)
+        # Plot filled envelope in segments
+        for seg in segments:
+            polygon_x = np.concatenate([x[seg], envelope_x[seg][::-1]])
+            polygon_y = np.concatenate([y[seg], envelope_y[seg][::-1]])
+            ax.fill(polygon_x, polygon_y, color=color, alpha=envelope_alpha, 
+                   edgecolor='none', zorder=1+i)
+            
+            # Plot envelope line
+            seg_x = envelope_x[seg]
+            seg_y = envelope_y[seg]
+            if is_fully_closed:
+                seg_x = np.append(seg_x, seg_x[0])
+                seg_y = np.append(seg_y, seg_y[0])
+                
+            ax.plot(seg_x, seg_y, color=color, linewidth=envelope_linewidth, 
+                   zorder=5+i, label=label if seg == segments[0] else "")
     
     ax.set_aspect('equal')
     ax.set_xlabel('x')
@@ -469,22 +499,23 @@ def plot_dual_surface_envelope(
         (env1_x, env1_y, color1, label1, 0.25),
         (env2_x, env2_y, color2, label2, 0.25),
     ]:
-        # Filter out NaN values before plotting
-        valid_mask = ~(np.isnan(env_x) | np.isnan(env_y))
-        env_x_clean = env_x[valid_mask]
-        env_y_clean = env_y[valid_mask]
-        x_clean = x[valid_mask]
-        y_clean = y[valid_mask]
+        # Filter out NaN values and break into contiguous segments
+        valid_mask = ~(np.isnan(env_x) | np.isnan(env_y) | np.isnan(x) | np.isnan(y))
+        segments = np.ma.clump_unmasked(np.ma.masked_where(~valid_mask, env_x))
+        is_fully_closed = len(segments) == 1 and segments[0].start == 0 and segments[0].stop == len(env_x)
     
-        # Build polygon from cleaned data
-        polygon_x = np.concatenate([x_clean, env_x_clean[::-1]])
-        polygon_y = np.concatenate([y_clean, env_y_clean[::-1]])
-    
-        ax.fill(polygon_x, polygon_y, color=color, alpha=alpha, edgecolor='none')
-    
-        closed_x = np.append(env_x_clean, env_x_clean[0])
-        closed_y = np.append(env_y_clean, env_y_clean[0])
-        ax.plot(closed_x, closed_y, color=color, linewidth=1.5, label=label)
+        for i, seg in enumerate(segments):
+            # Build polygon from contiguous segment
+            polygon_x = np.concatenate([x[seg], env_x[seg][::-1]])
+            polygon_y = np.concatenate([y[seg], env_y[seg][::-1]])
+            ax.fill(polygon_x, polygon_y, color=color, alpha=alpha, edgecolor='none')
+        
+            seg_x = env_x[seg]
+            seg_y = env_y[seg]
+            if is_fully_closed:
+                seg_x = np.append(seg_x, seg_x[0])
+                seg_y = np.append(seg_y, seg_y[0])
+            ax.plot(seg_x, seg_y, color=color, linewidth=1.5, label=label if i == 0 else "")
     
     # Show difference regions
     if show_difference:

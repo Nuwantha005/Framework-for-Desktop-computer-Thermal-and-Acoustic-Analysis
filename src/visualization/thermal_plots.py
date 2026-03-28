@@ -285,8 +285,9 @@ def plot_thermal_envelope(
         if i < n_thermal and panel_idx < M:
             vals_full[panel_idx] = thermal_vals[i]
     
-    # Replace NaN with 0 for plotting (or could use masked array)
-    vals_plot = np.where(np.isnan(vals_full), 0.0, vals_full)
+    # Use masked array instead of replacing with 0 to prevent 
+    # plotting the envelope in regions without valid data (like the wake)
+    vals_plot = np.ma.masked_invalid(vals_full)
     
     # Get units for colorbar label
     label = _THERMAL_LABELS.get(quantity, quantity)
@@ -360,7 +361,9 @@ def plot_thermal_envelope_two_sides(
         if i < len(lower_vals) and panel_idx < M:
             vals_full[panel_idx] = lower_vals[i]
     
-    vals_plot = np.where(np.isnan(vals_full), 0.0, vals_full)
+    # Use masked array instead of replacing with 0 to prevent 
+    # plotting the envelope in regions without valid data (like the wake)
+    vals_plot = np.ma.masked_invalid(vals_full)
     label = _THERMAL_LABELS.get(quantity, quantity)
     
     fig, ax = plot_surface_envelope(

@@ -102,7 +102,7 @@ def assemble_boundary_matrices(
     
     # Assemble H and G (off-diagonal)
     H = T_star_n * lengths_b[None, :]
-    G = -T_star * lengths_b[None, :]
+    G = T_star * lengths_b[None, :]
     
     # Diagonal elements (analytical treatment)
     diag_idx = np.arange(N)
@@ -183,9 +183,9 @@ def assemble_boundary_domain_coupling(
     if M == N:
         diag_idx = np.arange(N)
         diag_mask = r[diag_idx, diag_idx] < 1e-12
-        # For diagonal: T* = (1/2π) * ln(2/L)
+        # For diagonal: T* = (1/2π) * (1 + ln(2/L))
         T_star[diag_idx[diag_mask], diag_idx[diag_mask]] = (
-            (1.0 / (2.0 * np.pi)) * np.log(2.0 / lengths_b[diag_mask])
+            (1.0 / (2.0 * np.pi)) * (1.0 + np.log(2.0 / lengths_b[diag_mask]))
         )
     
     # EC[i, j, :] = T*[i, j] * normals_b[j, :] * lengths_b[j]

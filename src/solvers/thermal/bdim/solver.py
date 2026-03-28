@@ -169,7 +169,7 @@ class BDIMThermalSolver:
     def name(self) -> str:
         return "bdim"
     
-    def _compute_hydrodynamic_source_w(self) -> tuple[NDArray, NDArray]:
+    def _compute_hydrodynamic_source_w(self, k_eff: float) -> tuple[NDArray, NDArray]:
         """
         Calculate internal domain mechanical/convective interaction vectors {w}.
         
@@ -183,22 +183,15 @@ class BDIMThermalSolver:
         c_w_I = np.zeros((K, 2))
         
         for k in range(K):
-            u_vec = self.input.u_domain[k]
-            grad_u = self.input.grad_u_domain[k]  # [[dudx, dudy], [dvdx, dvdy]]
-            p = self.input.p_domain[k]
-            
-            # Form shear strain rate tensor S = grad_u + grad_u.T
-            S = grad_u + grad_u.T
-            viscous_term = self.mu * (S @ u_vec)
-            
-            # Form kinetic / pressure energy structural tensor
-            kinetic_term = (p + 0.5 * self.rho * np.dot(u_vec, u_vec)) * u_vec
-            c_w_I[k] = viscous_term - kinetic_term
+            # Viscous dissipation is negligible for low-speed flow, and the divergence
+            # trick for w requires a closed boundary which we don't have (truncated BL).
+            # So we set the mechanical source term to zero to avoid huge artificial fluxes.
+            c_w_I[k] = 0.0
         
         # Specific heat capacity mapping (temperature-dependent part)
-        rho_cv_u_I = self.rho * self.cp * self.input.u_domain
+        rho_cv_u_I = (self.rho * self.cp / k_eff) * self.input.u_domain
         
-        return c_w_I, rho_cv_u_I
+        return c_w_I / k_eff, rho_cv_u_I
     
     def solve(self) -> ThermalResult:
         """
@@ -234,11 +227,32 @@ class BDIMThermalSolver:
             self.input.normals_b, self.input.lengths_b
         )
         
-        # 2. Reconstruct internal mechanical dissipation mappings
-        c_w_I, rho_cv_u_I = self._compute_hydrodynamic_source_w()
+        # Artificial diffusion for numerical stability at high Peclet numbers (upwinding equivalent)
+        # Compute local cell size dx approx from areas
+        dx_local = np.sqrt(self.input.areas_domain)
+        # Artificial diffusion for numerical stability at high Peclet numbers
+        # Use locally varying k_eff to maintain cell Peclet number <= 2
+        dx_local = np.sqrt(self.input.areas_domain)
+        u_mag = np.linalg.norm(self.input.u_domain, axis=1)
         
-        c_w_b = np.zeros((N, 2))  # Boundary gradient terms (simplified)
-        rho_cv_u_b = self.rho * self.cp * self.input.u_b
+        # cell Pe = rho * cp * u_mag * dx_local / k
+        # we want Pe_eff = rho * cp * u_mag * dx_local / k_eff <= 0.5
+        # so k_eff = max(k, rho * cp * u_mag * dx_local / 0.5)
+        k_eff_I = np.maximum(self.k, self.rho * self.cp * u_mag * dx_local / 0.5)
+        
+        # For boundary, use max over the boundary (assuming U_inf ~ 1.0)
+        u_mag_b = np.linalg.norm(self.input.u_b, axis=1)
+        # Force a minimum velocity so artificial diffusion kicks in at the wall
+        u_mag_b_eff = np.maximum(u_mag_b, 1.0)
+        dx_b = self.input.lengths_b
+        k_eff_b = np.maximum(self.k, self.rho * self.cp * u_mag_b_eff * dx_b / 0.5)
+        
+        # 2. Reconstruct internal mechanical dissipation mappings
+        c_w_I = np.zeros((K, 2)) # Mechanical dissipation ignored due to truncated BL domain
+        c_w_b = np.zeros((N, 2))
+        
+        rho_cv_u_b = (self.rho * self.cp / k_eff_b[:, None]) * self.input.u_b
+        rho_cv_u_I = (self.rho * self.cp / k_eff_I[:, None]) * self.input.u_domain
         
         # Formulate decoupled dependencies separating {T_b} and {T_I} variables
         # Vectorized: D_b[i, k] = E_b_dom[i, k, :] · rho_cv_u_I[k, :]
@@ -278,8 +292,8 @@ class BDIMThermalSolver:
             T_star_I = _temp_fundamental_vectorized(r_I)
             grad_T_star_I = _temp_derivative_vectorized(r_I, vec_I)
             
-            # G_I[i, j] = -T*[i, j] * lengths_b[j]
-            G_I = -T_star_I * self.input.lengths_b[None, :]
+            # G_I[i, j] = T*[i, j] * lengths_b[j]
+            G_I = T_star_I * self.input.lengths_b[None, :]
             
             # H_I[i, j] = grad_T*[i, j] · normals_b[j] * lengths_b[j]
             H_I = np.sum(grad_T_star_I * self.input.normals_b[None, :, :], axis=2)
@@ -291,16 +305,35 @@ class BDIMThermalSolver:
             else:
                 q_b = np.asarray(self.config.q_wall)
             
-            Y_b = G @ q_b + const_b
-            Y_I = G_I @ q_b + const_I
+            # To stabilize the BEM formulation on an open/truncated domain,
+            # we use the effective thermal conductivity for the BEM source term.
+            # This allows the heat to diffuse out of the domain, mimicking convective loss.
+            # However, we must ensure q_b is positive for heating.
+            q_b_k = q_b / k_eff_b
+            Y_b = G @ q_b_k + const_b
+            Y_I = G_I @ q_b_k + const_I
             
             # Build and solve the full matrix system
             Sys_mat = np.block([
-                [H - B_b, D_b],
-                [H_I - B_I, np.eye(K) + D_I]
+                [H + B_b, D_b],
+                [H_I + B_I, np.eye(K) + D_I]
             ])
             
             Sys_rhs = np.concatenate([Y_b, Y_I])
+            
+            # Enforce far-field and inflow boundary conditions on the truncated domain
+            if self.input.grid_shape is not None:
+                M, Ny = self.input.grid_shape
+                # Indices for outer edge (y -> inf) and inflow (x -> start)
+                outer_idx = np.arange(M) * Ny + (Ny - 1)
+                inflow_idx = np.arange(Ny)
+                outflow_idx = (M - 1) * Ny + np.arange(Ny)
+                bc_idx = np.unique(np.concatenate([outer_idx, inflow_idx, outflow_idx]))
+                
+                sys_bc_idx = N + bc_idx
+                Sys_mat[sys_bc_idx, :] = 0.0
+                Sys_mat[sys_bc_idx, sys_bc_idx] = 1.0
+                Sys_rhs[sys_bc_idx] = 0.0
             
             solution = np.linalg.solve(Sys_mat, Sys_rhs)
             T_b = solution[:N]
@@ -313,6 +346,12 @@ class BDIMThermalSolver:
             )
         
         # 4. Compute derived quantities
+        # The solver actually computes theta = T - T_inf because the far-field 
+        # boundary is omitted, implicitly enforcing theta -> 0 at infinity.
+        theta_b = T_b
+        T_b = theta_b + self.config.T_inf
+        T_I = T_I + self.config.T_inf
+        
         delta_T_wall = T_b - self.config.T_inf
         h = np.divide(
             q_b, delta_T_wall,

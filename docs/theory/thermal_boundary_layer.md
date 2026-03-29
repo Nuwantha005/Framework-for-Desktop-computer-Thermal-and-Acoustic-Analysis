@@ -50,6 +50,8 @@ $$
 
 where $r = \|\mathbf{y} - \mathbf{x}\|$ is the distance from the source point $\mathbf{x}$ to the field point $\mathbf{y}$, $n_i$ represents the local outward-facing normal vector component, and $q(\mathbf{y}) = -k \frac{\partial T(\mathbf{y})}{\partial n}$ is the boundary heat flux. For points exactly on a smooth boundary, the geometric coefficient is $c(\mathbf{x}) = \frac{1}{2}$, whereas for internal points, $c(\mathbf{x}) = 1$.
 
+*Note: For actual numerical implementation, evaluating these exact fundamental solutions with a midpoint approximation leads to severe $1/r$ singularities near the wall. See the [Implementation Details](./bdim_stabilization_implementation.md) for the exact analytical integration scheme used to stabilize near-wall boundary interactions.*
+
 ## 3. Discretization and Matrix Assembly
 
 To compute the temperature profile when subject to an arbitrary heat flux boundary condition, the boundary $\Gamma$ and the internal field domain $\Omega$ must be formally discretized.
@@ -74,7 +76,7 @@ $$
 \{w\} = \{c_w\} + [B] \{T_b\} + [D] \{T_I\}
 $$
 
-where $\{c_w\}$ contains the known local evaluated variables $\left[\mu(u_{i,j} + u_{j,i})u_j - (p + \frac{1}{2}\rho u^2) u_i \right]$, while $[B]$ and $[D]$ are matrices populated systematically by the $\rho c_v u_i$ local mapping for boundary and internal points, respectively.
+where $\{c_w\}$ contains the known local evaluated variables $\left[\mu(u_{i,j} + u_{j,i})u_j - (p + \frac{1}{2}\rho u^2) u_i \right]$, while $[B]$ and $[D]$ are matrices populated systematically by the $\rho c_v u_i$ local mapping for boundary and internal points, respectively. *To suppress numerical oscillations in high Péclet number flows, an artificial diffusion parameter $k_{eff}$ is introduced at this stage. See the [Implementation Details](./bdim_stabilization_implementation.md) for the exact formulation.*
 
 ## 4. Solving for the Surface Temperature
 

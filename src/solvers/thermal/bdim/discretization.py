@@ -66,6 +66,81 @@ def _temp_derivative_vectorized(r: NDArray, vec: NDArray) -> NDArray:
     return grad
 
 
+def compute_analytical_HG(
+    nodes_eval: NDArray,
+    nodes_b: NDArray,
+    normals_b: NDArray,
+    lengths_b: NDArray
+) -> tuple[NDArray, NDArray]:
+    """
+    Exact analytical integration for constant-strength panels.
+    Replaces midpoint approximation for H and G matrices to avoid
+    singularities near the boundary.
+    
+    Args:
+        nodes_eval: Evaluation points, shape (M, 2)
+        nodes_b: Boundary panel midpoints, shape (N, 2)
+        normals_b: Boundary outward normals, shape (N, 2)
+        lengths_b: Boundary panel lengths, shape (N,)
+        
+    Returns:
+        H: Analytical H matrix, shape (M, N)
+        G: Analytical G matrix, shape (M, N)
+    """
+    M = len(nodes_eval)
+    N = len(nodes_b)
+    
+    # Tangents (N, 2)
+    tx = -normals_b[:, 1]
+    ty = normals_b[:, 0]
+    
+    # Endpoints
+    half_L = lengths_b / 2
+    p1x = nodes_b[:, 0] - half_L * tx
+    p1y = nodes_b[:, 1] - half_L * ty
+    p2x = nodes_b[:, 0] + half_L * tx
+    p2y = nodes_b[:, 1] + half_L * ty
+    
+    # Relative vectors: shape (M, N)
+    rx1 = nodes_eval[:, 0:1] - p1x[None, :]
+    ry1 = nodes_eval[:, 1:2] - p1y[None, :]
+    
+    rx2 = nodes_eval[:, 0:1] - p2x[None, :]
+    ry2 = nodes_eval[:, 1:2] - p2y[None, :]
+    
+    # Local coordinates of eval points relative to panel start (p1)
+    x_loc = rx1 * tx[None, :] + ry1 * ty[None, :]
+    y_loc = rx1 * normals_b[:, 0][None, :] + ry1 * normals_b[:, 1][None, :]
+    
+    r1_sq = x_loc**2 + y_loc**2
+    r2_sq = (x_loc - lengths_b[None, :])**2 + y_loc**2
+    
+    # theta1 and theta2
+    theta1 = np.arctan2(y_loc, x_loc)
+    theta2 = np.arctan2(y_loc, x_loc - lengths_b[None, :])
+    
+    dtheta = theta2 - theta1
+    # Wrap dtheta to [-pi, pi]
+    dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi
+    
+    H = -dtheta / (2 * np.pi)
+    
+    r1 = np.sqrt(np.maximum(r1_sq, 1e-24))
+    r2 = np.sqrt(np.maximum(r2_sq, 1e-24))
+    
+    L = lengths_b[None, :]
+    val = (x_loc * np.log(r1) - (x_loc - L) * np.log(r2) + y_loc * dtheta - L)
+    G = -val / (2 * np.pi)
+    
+    # Handle self-influence (when nodes_eval == nodes_b)
+    if M == N and np.allclose(nodes_eval, nodes_b):
+        diag_idx = np.arange(N)
+        H[diag_idx, diag_idx] = 0.5
+        G[diag_idx, diag_idx] = (lengths_b / (2 * np.pi)) * (1.0 - np.log(lengths_b / 2.0))
+        
+    return H, G
+
+
 def assemble_boundary_matrices(
     nodes_b: NDArray, 
     normals_b: NDArray, 
@@ -74,7 +149,7 @@ def assemble_boundary_matrices(
     """
     Assemble BEM matrices [H] and [G] for boundary equations.
     
-    Vectorized implementation for efficiency.
+    Uses exact analytical integration to avoid singularities.
     
     Args:
         nodes_b: Boundary node positions, shape (N, 2)
@@ -85,33 +160,8 @@ def assemble_boundary_matrices(
         H: Shape (N, N)
         G: Shape (N, N)
     """
-    N = len(nodes_b)
-    
-    # Compute pairwise distances and vectors
-    r, vec = _compute_distances(nodes_b, nodes_b)
-    
-    # Fundamental solution T*
-    T_star = _temp_fundamental_vectorized(r)
-    
-    # Gradient of T*
-    grad_T_star = _temp_derivative_vectorized(r, vec)
-    
-    # Normal derivative: T*,n = grad_T* · n
-    # grad_T_star[i, j, :] · normals_b[j, :] for each (i, j)
-    T_star_n = np.sum(grad_T_star * normals_b[None, :, :], axis=2)
-    
-    # Assemble H and G (off-diagonal)
-    H = T_star_n * lengths_b[None, :]
-    G = T_star * lengths_b[None, :]
-    
-    # Diagonal elements (analytical treatment)
-    diag_idx = np.arange(N)
-    H[diag_idx, diag_idx] = 0.5  # c(x) = 0.5 for smooth boundary
-    # Logarithmic integral for self-influence
-    L = lengths_b
-    G[diag_idx, diag_idx] = (L / (2.0 * np.pi)) * (1.0 - np.log(L / 2.0))
-    
-    return H, G
+    return compute_analytical_HG(nodes_b, nodes_b, normals_b, lengths_b)
+
 
 
 def assemble_domain_matrices(

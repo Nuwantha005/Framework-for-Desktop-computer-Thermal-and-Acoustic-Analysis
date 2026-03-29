@@ -27,7 +27,8 @@ from ..utils import compute_total_heat_rate
 from .discretization import (
     assemble_boundary_matrices,
     assemble_domain_matrices,
-    assemble_boundary_domain_coupling
+    assemble_boundary_domain_coupling,
+    compute_analytical_HG
 )
 
 
@@ -281,23 +282,12 @@ class BDIMThermalSolver:
         # 3. Impose constraints and solve
         if self.config.q_wall is not None:
             # Neumann BC: heat flux given, solve for T_b and T_I
-            from .discretization import (
-                _compute_distances, 
-                _temp_fundamental_vectorized,
-                _temp_derivative_vectorized,
+            # Compute G_I and H_I using exact analytical expressions
+            # to avoid singularity for domain points very close to panels
+            H_I, G_I = compute_analytical_HG(
+                self.input.nodes_domain, self.input.nodes_b,
+                self.input.normals_b, self.input.lengths_b
             )
-            
-            # Compute G_I and H_I using vectorized operations
-            r_I, vec_I = _compute_distances(self.input.nodes_domain, self.input.nodes_b)
-            T_star_I = _temp_fundamental_vectorized(r_I)
-            grad_T_star_I = _temp_derivative_vectorized(r_I, vec_I)
-            
-            # G_I[i, j] = T*[i, j] * lengths_b[j]
-            G_I = T_star_I * self.input.lengths_b[None, :]
-            
-            # H_I[i, j] = grad_T*[i, j] · normals_b[j] * lengths_b[j]
-            H_I = np.sum(grad_T_star_I * self.input.normals_b[None, :, :], axis=2)
-            H_I = H_I * self.input.lengths_b[None, :]
             
             # Expand q_wall if scalar
             if isinstance(self.config.q_wall, (int, float)):

@@ -50,6 +50,16 @@ from .thermal_plots import (
     plot_thermal_envelope_two_sides,
     plot_thermal_summary,
 )
+from .thermal_fluent_comparison_plots import (
+    plot_thermal_wall_envelope_side_by_side,
+    plot_thermal_wall_envelope_overlay,
+    plot_thermal_fluent_contour_side_by_side,
+    plot_thermal_fluent_contour_difference,
+    plot_thermal_fluent_contour_normalized_side_by_side,
+    plot_thermal_fluent_contour_normalized_difference,
+    plot_thermal_fluent_envelope_side_by_side,
+    plot_thermal_fluent_envelope_difference,
+)
 
 # Legacy exports (prefer Visualizer for new code)
 from .mesh_plot import MeshPlotter, quick_plot_mesh, quick_plot_component, quick_plot_scene
@@ -105,6 +115,14 @@ __all__ = [
     'plot_thermal_envelope',
     'plot_thermal_envelope_two_sides',
     'plot_thermal_summary',
+    'plot_thermal_wall_envelope_side_by_side',
+    'plot_thermal_wall_envelope_overlay',
+    'plot_thermal_fluent_contour_side_by_side',
+    'plot_thermal_fluent_contour_difference',
+    'plot_thermal_fluent_contour_normalized_side_by_side',
+    'plot_thermal_fluent_contour_normalized_difference',
+    'plot_thermal_fluent_envelope_side_by_side',
+    'plot_thermal_fluent_envelope_difference',
     # Legacy
     'MeshPlotter',
     'quick_plot_mesh',

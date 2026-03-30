@@ -51,6 +51,21 @@ from .comparison import (
     BLComparisonResult,
     BLComparisonRunner,
 )
+from .thermal_ascii_reader import (
+    read_thermal_field_data,
+    read_thermal_wall_data,
+    find_fluent_thermal_export_dir,
+    load_fluent_thermal_data,
+)
+from .thermal_data_types import (
+    FluentThermalFieldData,
+    FluentThermalWallData,
+    FluentThermalPathResult,
+    FluentThermalResult,
+    InterpolatedThermalField,
+    ThermalComparisonResult,
+)
+from .thermal_comparison import ThermalComparisonRunner
 
 __all__ = [
     # Data types
@@ -73,4 +88,18 @@ __all__ = [
     "BLComparisonMetrics",
     "BLComparisonResult",
     "BLComparisonRunner",
+    # Thermal Fluent data types
+    "FluentThermalFieldData",
+    "FluentThermalWallData",
+    "FluentThermalPathResult",
+    "FluentThermalResult",
+    "InterpolatedThermalField",
+    "ThermalComparisonResult",
+    # Thermal ASCII readers
+    "read_thermal_field_data",
+    "read_thermal_wall_data",
+    "find_fluent_thermal_export_dir",
+    "load_fluent_thermal_data",
+    # Thermal comparison
+    "ThermalComparisonRunner",
 ]

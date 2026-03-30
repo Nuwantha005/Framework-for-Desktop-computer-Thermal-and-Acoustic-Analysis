@@ -59,6 +59,7 @@ from .thermal_fluent_comparison_plots import (
     plot_thermal_fluent_contour_normalized_difference,
     plot_thermal_fluent_envelope_side_by_side,
     plot_thermal_fluent_envelope_difference,
+    plot_thermal_wall_line_comparison,
 )
 
 # Legacy exports (prefer Visualizer for new code)
@@ -123,6 +124,7 @@ __all__ = [
     'plot_thermal_fluent_contour_normalized_difference',
     'plot_thermal_fluent_envelope_side_by_side',
     'plot_thermal_fluent_envelope_difference',
+    'plot_thermal_wall_line_comparison',
     # Legacy
     'MeshPlotter',
     'quick_plot_mesh',

@@ -159,6 +159,52 @@ def plot_thermal_wall_envelope_overlay(
     return fig, ax
 
 
+def plot_thermal_wall_line_comparison(
+    comparison_result,
+    quantity: str = "wall_temperature",
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+) -> Tuple[Figure, np.ndarray]:
+    """Line comparison of thermal wall quantities vs arc length for both sides."""
+    if quantity not in ("wall_temperature", "heat_transfer_coeff"):
+        raise ValueError(f"Unsupported thermal wall quantity '{quantity}'")
+
+    fig, (ax_u, ax_l) = plt.subplots(2, 1, figsize=(10, 7), sharex=False)
+    axes = np.array([ax_u, ax_l])
+    qty_label = _quantity_label(quantity)
+
+    side_data = [
+        ("upper", comparison_result.upper_thermal_result, ax_u),
+        ("lower", comparison_result.lower_thermal_result, ax_l),
+    ]
+
+    for side, thermal_result, ax in side_data:
+        s_bl = np.asarray(thermal_result.arc_length)
+        v_bl = np.asarray(getattr(thermal_result, quantity))
+        ax.plot(s_bl, v_bl, "-", lw=2.0, color="#1f77b4", label="Thermal Solver")
+
+        if comparison_result.fluent_wall_result is not None:
+            fl_path = comparison_result.fluent_wall_result.sides[side]
+            s_fl = np.asarray(fl_path.s)
+            v_fl = np.asarray(getattr(fl_path, quantity))
+            ax.plot(s_fl, v_fl, "--", lw=2.0, color="#d62728", label="Fluent CFD")
+
+        ax.set_ylabel(qty_label)
+        ax.set_title(f"{side.capitalize()} side", fontsize=10)
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="best", fontsize=9)
+
+    axes[-1].set_xlabel("Arc length $s$ [m]")
+    if title is None:
+        title = f"{_WALL_META[quantity]['label']} vs arc length - Thermal vs Fluent"
+    fig.suptitle(title, fontsize=12)
+    fig.tight_layout()
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    return fig, axes
+
+
 def _plot_sy_contour(
     s: np.ndarray,
     y_grid: np.ndarray,

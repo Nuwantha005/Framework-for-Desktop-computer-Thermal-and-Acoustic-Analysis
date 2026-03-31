@@ -6,15 +6,11 @@ Contains functions for computing influences of 3D singularity elements:
 """
 
 from .source3d import (
-    compute_quad_source_potential,
-    compute_quad_source_velocity,
     compute_source_influence_matrix,
-    compute_source_velocity_influence,
+    compute_all_velocities_influence,
 )
 
 __all__ = [
-    "compute_quad_source_potential",
-    "compute_quad_source_velocity", 
     "compute_source_influence_matrix",
-    "compute_source_velocity_influence",
+    "compute_all_velocities_influence",
 ]

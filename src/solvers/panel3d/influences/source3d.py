@@ -13,301 +13,19 @@ All computations are performed in panel-local coordinates where:
 import numpy as np
 from numpy.typing import NDArray
 from typing import Tuple
+from numba import njit, prange
 
 # Small number for numerical stability
 EPS = 1e-12
 
-
-def compute_quad_source_potential(
-    point: NDArray[np.float64],
-    vertices: NDArray[np.float64],
-    sigma: float = 1.0,
-) -> float:
-    """
-    Compute velocity potential at a point due to a quad source panel.
-    
-    Uses K&P Eq. 10.89 for the near-field and Eq. 10.100 for far-field.
-    
-    Args:
-        point: (3,) field point in panel-local coordinates
-        vertices: (4, 3) panel corner vertices in CCW order (panel-local)
-        sigma: Source strength (default 1.0 for unit influence)
-    
-    Returns:
-        Velocity potential Φ at the point
-    """
-    x, y, z = point[0], point[1], point[2]
-    
-    # Extract vertex coordinates (in panel-local frame, z_k = 0)
-    x1, y1 = vertices[0, 0], vertices[0, 1]
-    x2, y2 = vertices[1, 0], vertices[1, 1]
-    x3, y3 = vertices[2, 0], vertices[2, 1]
-    x4, y4 = vertices[3, 0], vertices[3, 1]
-    
-    # Edge lengths (Eq. 10.90)
-    d12 = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-    d23 = np.sqrt((x3 - x2)**2 + (y3 - y2)**2)
-    d34 = np.sqrt((x4 - x3)**2 + (y4 - y3)**2)
-    d41 = np.sqrt((x1 - x4)**2 + (y1 - y4)**2)
-    
-    # Edge slopes (Eq. 10.91) - handle vertical edges
-    m12 = _safe_slope(y2 - y1, x2 - x1)
-    m23 = _safe_slope(y3 - y2, x3 - x2)
-    m34 = _safe_slope(y4 - y3, x4 - x3)
-    m41 = _safe_slope(y1 - y4, x1 - x4)
-    
-    # Distances from point to vertices (Eq. 10.92)
-    r1 = np.sqrt((x - x1)**2 + (y - y1)**2 + z**2)
-    r2 = np.sqrt((x - x2)**2 + (y - y2)**2 + z**2)
-    r3 = np.sqrt((x - x3)**2 + (y - y3)**2 + z**2)
-    r4 = np.sqrt((x - x4)**2 + (y - y4)**2 + z**2)
-    
-    # Auxiliary quantities (Eq. 10.93, 10.94)
-    e1 = (x - x1)**2 + z**2
-    e2 = (x - x2)**2 + z**2
-    e3 = (x - x3)**2 + z**2
-    e4 = (x - x4)**2 + z**2
-    
-    h1 = (x - x1) * (y - y1)
-    h2 = (x - x2) * (y - y2)
-    h3 = (x - x3) * (y - y3)
-    h4 = (x - x4) * (y - y4)
-    
-    # Compute potential using Eq. 10.89
-    # First part: logarithmic terms from each edge
-    phi = 0.0
-    
-    # Edge 1-2
-    phi += _log_term(x, y, x1, y1, x2, y2, d12, r1, r2)
-    # Edge 2-3
-    phi += _log_term(x, y, x2, y2, x3, y3, d23, r2, r3)
-    # Edge 3-4
-    phi += _log_term(x, y, x3, y3, x4, y4, d34, r3, r4)
-    # Edge 4-1
-    phi += _log_term(x, y, x4, y4, x1, y1, d41, r4, r1)
-    
-    # Second part: arctangent terms (solid angle contribution)
-    if abs(z) > EPS:
-        atan_sum = 0.0
-        atan_sum += np.arctan2(m12 * e1 - h1, z * r1) - np.arctan2(m12 * e2 - h2, z * r2)
-        atan_sum += np.arctan2(m23 * e2 - h2, z * r2) - np.arctan2(m23 * e3 - h3, z * r3)
-        atan_sum += np.arctan2(m34 * e3 - h3, z * r3) - np.arctan2(m34 * e4 - h4, z * r4)
-        atan_sum += np.arctan2(m41 * e4 - h4, z * r4) - np.arctan2(m41 * e1 - h1, z * r1)
-        
-        phi -= abs(z) * atan_sum
-    
-    return -sigma / (4 * np.pi) * phi
-
-
-def compute_quad_source_velocity(
-    point: NDArray[np.float64],
-    vertices: NDArray[np.float64],
-    sigma: float = 1.0,
-) -> NDArray[np.float64]:
-    """
-    Compute velocity at a point due to a quad source panel.
-    
-    Uses K&P Eq. 10.95-10.97 for velocity components.
-    
-    Args:
-        point: (3,) field point in panel-local coordinates
-        vertices: (4, 3) panel corner vertices in CCW order (panel-local)
-        sigma: Source strength (default 1.0 for unit influence)
-    
-    Returns:
-        (3,) velocity vector [u, v, w] in panel-local coordinates
-    """
-    x, y, z = point[0], point[1], point[2]
-    
-    # Extract vertex coordinates
-    x1, y1 = vertices[0, 0], vertices[0, 1]
-    x2, y2 = vertices[1, 0], vertices[1, 1]
-    x3, y3 = vertices[2, 0], vertices[2, 1]
-    x4, y4 = vertices[3, 0], vertices[3, 1]
-    
-    # Edge lengths
-    d12 = np.sqrt((x2 - x1)**2 + (y2 - y1)**2) + EPS
-    d23 = np.sqrt((x3 - x2)**2 + (y3 - y2)**2) + EPS
-    d34 = np.sqrt((x4 - x3)**2 + (y4 - y3)**2) + EPS
-    d41 = np.sqrt((x1 - x4)**2 + (y1 - y4)**2) + EPS
-    
-    # Edge slopes
-    m12 = _safe_slope(y2 - y1, x2 - x1)
-    m23 = _safe_slope(y3 - y2, x3 - x2)
-    m34 = _safe_slope(y4 - y3, x4 - x3)
-    m41 = _safe_slope(y1 - y4, x1 - x4)
-    
-    # Distances to vertices
-    r1 = np.sqrt((x - x1)**2 + (y - y1)**2 + z**2) + EPS
-    r2 = np.sqrt((x - x2)**2 + (y - y2)**2 + z**2) + EPS
-    r3 = np.sqrt((x - x3)**2 + (y - y3)**2 + z**2) + EPS
-    r4 = np.sqrt((x - x4)**2 + (y - y4)**2 + z**2) + EPS
-    
-    # Auxiliary quantities
-    e1, e2 = (x - x1)**2 + z**2, (x - x2)**2 + z**2
-    e3, e4 = (x - x3)**2 + z**2, (x - x4)**2 + z**2
-    h1, h2 = (x - x1) * (y - y1), (x - x2) * (y - y2)
-    h3, h4 = (x - x3) * (y - y3), (x - x4) * (y - y4)
-    
-    # u component (Eq. 10.95)
-    u = ((y2 - y1) / d12 * _log_arg(r1, r2, d12) +
-         (y3 - y2) / d23 * _log_arg(r2, r3, d23) +
-         (y4 - y3) / d34 * _log_arg(r3, r4, d34) +
-         (y1 - y4) / d41 * _log_arg(r4, r1, d41))
-    
-    # v component (Eq. 10.96)
-    v = ((x1 - x2) / d12 * _log_arg(r1, r2, d12) +
-         (x2 - x3) / d23 * _log_arg(r2, r3, d23) +
-         (x3 - x4) / d34 * _log_arg(r3, r4, d34) +
-         (x4 - x1) / d41 * _log_arg(r4, r1, d41))
-    
-    # w component (Eq. 10.97) - normal velocity
-    w = (_atan_term(m12, e1, h1, z, r1) - _atan_term(m12, e2, h2, z, r2) +
-         _atan_term(m23, e2, h2, z, r2) - _atan_term(m23, e3, h3, z, r3) +
-         _atan_term(m34, e3, h3, z, r3) - _atan_term(m34, e4, h4, z, r4) +
-         _atan_term(m41, e4, h4, z, r4) - _atan_term(m41, e1, h1, z, r1))
-    
-    coeff = sigma / (4 * np.pi)
-    return np.array([coeff * u, coeff * v, coeff * w])
-
-
-def compute_quad_source_velocity_vectorized(
-    point: NDArray[np.float64],
-    all_vertices: NDArray[np.float64],
-    sigma: NDArray[np.float64],
-) -> NDArray[np.float64]:
-    """
-    Compute total velocity at a point from all quad source panels (vectorized).
-    
-    Args:
-        point: (3,) field point in global coordinates
-        all_vertices: (N, 4, 3) all panel vertices in global coordinates
-        sigma: (N,) source strengths
-    
-    Returns:
-        (3,) total velocity vector
-    """
-    n_panels = len(sigma)
-    velocity = np.zeros(3, dtype=np.float64)
-    
-    for j in range(n_panels):
-        v_local = compute_quad_source_velocity(point, all_vertices[j], sigma[j])
-        velocity += v_local
-    
-    return velocity
-
-
-def compute_source_influence_matrix(
-    centers: NDArray[np.float64],
-    normals: NDArray[np.float64],
-    vertices: NDArray[np.float64],
-    panels: NDArray[np.int32],
-) -> NDArray[np.float64]:
-    """
-    Compute the source influence matrix for normal velocity BC.
-    
-    Element [i, j] = normal velocity at panel i center due to unit source on panel j.
-    
-    The boundary condition V·n = 0 gives: Σ_j A_ij σ_j = -V_∞·n_i
-    
-    For self-influence (i==j), the normal velocity jump is ±σ/2 (K&P Eq. 10.98).
-    
-    Args:
-        centers: (N, 3) panel center points
-        normals: (N, 3) panel outward normals
-        vertices: (M, 3) all mesh nodes
-        panels: (N, 4) panel connectivity
-    
-    Returns:
-        (N, N) influence matrix A
-    """
-    n_panels = centers.shape[0]
-    A = np.zeros((n_panels, n_panels), dtype=np.float64)
-    
-    for i in range(n_panels):
-        point = centers[i]
-        normal_i = normals[i]
-        
-        for j in range(n_panels):
-            # Get panel j vertices
-            panel_verts = vertices[panels[j]]  # (4, 3)
-            
-            if i == j:
-                # Self-influence: normal velocity jump = σ/2 (K&P Eq. 10.98)
-                # For a source panel, the induced normal velocity on itself is -σ/2
-                # (factor of -1/2 because we're computing influence coefficient,
-                # and the jump is σ/2 on each side, total discontinuity σ)
-                A[i, j] = -0.5
-            else:
-                # Transform point to panel j local coordinates
-                point_local, panel_verts_local = _to_panel_local(
-                    point, panel_verts
-                )
-                
-                # Compute velocity in panel-local frame
-                vel_local = compute_quad_source_velocity(
-                    point_local, panel_verts_local, sigma=1.0
-                )
-                
-                # Transform velocity back to global frame
-                vel_global = _velocity_to_global(vel_local, panel_verts)
-                
-                # Normal component
-                A[i, j] = np.dot(vel_global, normal_i)
-    
-    return A
-
-
-def compute_source_velocity_influence(
-    point: NDArray[np.float64],
-    centers: NDArray[np.float64],
-    vertices: NDArray[np.float64],
-    panels: NDArray[np.int32],
-    sigma: NDArray[np.float64],
-) -> NDArray[np.float64]:
-    """
-    Compute induced velocity at a field point from all source panels.
-    
-    Args:
-        point: (3,) field point in global coordinates
-        centers: (N, 3) panel centers (not used directly, for consistency)
-        vertices: (M, 3) all mesh nodes
-        panels: (N, 4) panel connectivity
-        sigma: (N,) source strengths
-    
-    Returns:
-        (3,) induced velocity vector in global frame
-    """
-    n_panels = len(sigma)
-    velocity = np.zeros(3, dtype=np.float64)
-    
-    for j in range(n_panels):
-        panel_verts = vertices[panels[j]]  # (4, 3)
-        
-        # Transform to panel-local
-        point_local, panel_verts_local = _to_panel_local(point, panel_verts)
-        
-        # Compute local velocity
-        vel_local = compute_quad_source_velocity(
-            point_local, panel_verts_local, sigma[j]
-        )
-        
-        # Transform back to global
-        vel_global = _velocity_to_global(vel_local, panel_verts)
-        velocity += vel_global
-    
-    return velocity
-
-
-# --- Helper functions ---
-
+@njit(fastmath=True, cache=True)
 def _safe_slope(dy: float, dx: float) -> float:
     """Compute slope handling vertical edges."""
     if abs(dx) < EPS:
         return 1e10 * np.sign(dy) if abs(dy) > EPS else 0.0
     return dy / dx
 
-
+@njit(fastmath=True, cache=True)
 def _log_term(
     x: float, y: float,
     x1: float, y1: float,
@@ -330,7 +48,7 @@ def _log_term(
     
     return (num / d) * np.log(denom_plus / denom_minus)
 
-
+@njit(fastmath=True, cache=True)
 def _log_arg(r1: float, r2: float, d: float) -> float:
     """Compute log argument for velocity formula."""
     denom_minus = r1 + r2 - d
@@ -343,104 +61,308 @@ def _log_arg(r1: float, r2: float, d: float) -> float:
     
     return np.log(denom_minus / denom_plus)
 
-
+@njit(fastmath=True, cache=True)
 def _atan_term(m: float, e: float, h: float, z: float, r: float) -> float:
     """Compute arctangent term for w velocity."""
     if abs(z) < EPS or abs(r) < EPS:
         return 0.0
     return np.arctan2(m * e - h, z * r)
 
-
+@njit(fastmath=True, cache=True)
 def _to_panel_local(
     point: NDArray[np.float64],
     panel_verts: NDArray[np.float64],
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Transform point and panel vertices to panel-local coordinates.
-    
-    Local frame: origin at panel center, z-axis = panel normal,
-    x-axis along first edge direction.
-    
-    Args:
-        point: (3,) point in global frame
-        panel_verts: (4, 3) panel vertices in global frame
-    
-    Returns:
-        (point_local, verts_local) both in panel-local frame
     """
     # Panel center
-    center = np.mean(panel_verts, axis=0)
+    center = np.zeros(3)
+    for i in range(4):
+        center += panel_verts[i]
+    center /= 4.0
     
-    # Panel normal (from diagonal cross product, d2 × d1 for outward)
+    # Panel normal
     d1 = panel_verts[2] - panel_verts[0]
     d2 = panel_verts[3] - panel_verts[1]
-    normal = np.cross(d2, d1)  # Note: d2 × d1 for outward normal
-    normal = normal / (np.linalg.norm(normal) + EPS)
     
-    # Local x-axis: first edge direction
+    normal = np.empty(3)
+    normal[0] = d2[1]*d1[2] - d2[2]*d1[1]
+    normal[1] = d2[2]*d1[0] - d2[0]*d1[2]
+    normal[2] = d2[0]*d1[1] - d2[1]*d1[0]
+    
+    n_norm = np.sqrt(normal[0]**2 + normal[1]**2 + normal[2]**2) + EPS
+    normal /= n_norm
+    
+    # Local x-axis
     edge1 = panel_verts[1] - panel_verts[0]
-    edge1_mag = np.linalg.norm(edge1)
+    edge1_mag = np.sqrt(edge1[0]**2 + edge1[1]**2 + edge1[2]**2)
     
+    local_x = np.empty(3)
     if edge1_mag > EPS:
         local_x = edge1 / edge1_mag
     else:
-        # Degenerate first edge (e.g. at sphere poles), use second edge
         edge2 = panel_verts[2] - panel_verts[1]
-        local_x = edge2 / (np.linalg.norm(edge2) + EPS)
+        e2_norm = np.sqrt(edge2[0]**2 + edge2[1]**2 + edge2[2]**2) + EPS
+        local_x = edge2 / e2_norm
     
-    # Local y-axis: perpendicular to normal and x
-    local_y = np.cross(normal, local_x)
-    local_y = local_y / (np.linalg.norm(local_y) + EPS)
+    # Local y-axis
+    local_y = np.empty(3)
+    local_y[0] = normal[1]*local_x[2] - normal[2]*local_x[1]
+    local_y[1] = normal[2]*local_x[0] - normal[0]*local_x[2]
+    local_y[2] = normal[0]*local_x[1] - normal[1]*local_x[0]
     
-    # Rotation matrix (columns are local axes in global frame)
-    R = np.column_stack([local_x, local_y, normal])
+    y_norm = np.sqrt(local_y[0]**2 + local_y[1]**2 + local_y[2]**2) + EPS
+    local_y /= y_norm
+    
+    # Rotation matrix (R.T)
+    RT = np.empty((3, 3))
+    RT[0, 0] = local_x[0]; RT[0, 1] = local_x[1]; RT[0, 2] = local_x[2]
+    RT[1, 0] = local_y[0]; RT[1, 1] = local_y[1]; RT[1, 2] = local_y[2]
+    RT[2, 0] = normal[0]; RT[2, 1] = normal[1]; RT[2, 2] = normal[2]
     
     # Transform point
     point_rel = point - center
-    point_local = R.T @ point_rel
+    point_local = np.empty(3)
+    point_local[0] = RT[0,0]*point_rel[0] + RT[0,1]*point_rel[1] + RT[0,2]*point_rel[2]
+    point_local[1] = RT[1,0]*point_rel[0] + RT[1,1]*point_rel[1] + RT[1,2]*point_rel[2]
+    point_local[2] = RT[2,0]*point_rel[0] + RT[2,1]*point_rel[1] + RT[2,2]*point_rel[2]
     
     # Transform vertices
-    verts_rel = panel_verts - center
-    verts_local = (R.T @ verts_rel.T).T
-    
+    verts_local = np.empty((4, 3))
+    for i in range(4):
+        v_rel = panel_verts[i] - center
+        verts_local[i, 0] = RT[0,0]*v_rel[0] + RT[0,1]*v_rel[1] + RT[0,2]*v_rel[2]
+        verts_local[i, 1] = RT[1,0]*v_rel[0] + RT[1,1]*v_rel[1] + RT[1,2]*v_rel[2]
+        verts_local[i, 2] = RT[2,0]*v_rel[0] + RT[2,1]*v_rel[1] + RT[2,2]*v_rel[2]
+        
     return point_local, verts_local
 
-
+@njit(fastmath=True, cache=True)
 def _velocity_to_global(
     vel_local: NDArray[np.float64],
     panel_verts: NDArray[np.float64],
 ) -> NDArray[np.float64]:
-    """
-    Transform velocity from panel-local to global coordinates.
-    
-    Args:
-        vel_local: (3,) velocity in panel-local frame
-        panel_verts: (4, 3) panel vertices in global frame (for computing axes)
-    
-    Returns:
-        (3,) velocity in global frame
-    """
-    # Reconstruct local frame axes
+    """Transform velocity from panel-local to global coordinates."""
     d1 = panel_verts[2] - panel_verts[0]
     d2 = panel_verts[3] - panel_verts[1]
-    normal = np.cross(d2, d1)  # Note: d2 × d1 for outward normal
-    normal = normal / (np.linalg.norm(normal) + EPS)
+    
+    normal = np.empty(3)
+    normal[0] = d2[1]*d1[2] - d2[2]*d1[1]
+    normal[1] = d2[2]*d1[0] - d2[0]*d1[2]
+    normal[2] = d2[0]*d1[1] - d2[1]*d1[0]
+    n_norm = np.sqrt(normal[0]**2 + normal[1]**2 + normal[2]**2) + EPS
+    normal /= n_norm
     
     edge1 = panel_verts[1] - panel_verts[0]
-    edge1_mag = np.linalg.norm(edge1)
+    edge1_mag = np.sqrt(edge1[0]**2 + edge1[1]**2 + edge1[2]**2)
     
+    local_x = np.empty(3)
     if edge1_mag > EPS:
         local_x = edge1 / edge1_mag
     else:
-        # Degenerate first edge, use second
         edge2 = panel_verts[2] - panel_verts[1]
-        local_x = edge2 / (np.linalg.norm(edge2) + EPS)
+        e2_norm = np.sqrt(edge2[0]**2 + edge2[1]**2 + edge2[2]**2) + EPS
+        local_x = edge2 / e2_norm
     
-    local_y = np.cross(normal, local_x)
-    local_y = local_y / (np.linalg.norm(local_y) + EPS)
+    local_y = np.empty(3)
+    local_y[0] = normal[1]*local_x[2] - normal[2]*local_x[1]
+    local_y[1] = normal[2]*local_x[0] - normal[0]*local_x[2]
+    local_y[2] = normal[0]*local_x[1] - normal[1]*local_x[0]
+    y_norm = np.sqrt(local_y[0]**2 + local_y[1]**2 + local_y[2]**2) + EPS
+    local_y /= y_norm
     
-    # Rotation matrix
-    R = np.column_stack([local_x, local_y, normal])
+    vel_global = np.empty(3)
+    vel_global[0] = local_x[0]*vel_local[0] + local_y[0]*vel_local[1] + normal[0]*vel_local[2]
+    vel_global[1] = local_x[1]*vel_local[0] + local_y[1]*vel_local[1] + normal[1]*vel_local[2]
+    vel_global[2] = local_x[2]*vel_local[0] + local_y[2]*vel_local[1] + normal[2]*vel_local[2]
     
-    # Transform velocity
-    return R @ vel_local
+    return vel_global
+
+@njit(fastmath=True, cache=True)
+def compute_quad_source_potential(
+    point: NDArray[np.float64],
+    vertices: NDArray[np.float64],
+    sigma: float = 1.0,
+) -> float:
+    """Compute velocity potential at a point due to a quad source panel."""
+    x, y, z = point[0], point[1], point[2]
+    
+    x1, y1 = vertices[0, 0], vertices[0, 1]
+    x2, y2 = vertices[1, 0], vertices[1, 1]
+    x3, y3 = vertices[2, 0], vertices[2, 1]
+    x4, y4 = vertices[3, 0], vertices[3, 1]
+    
+    d12 = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+    d23 = np.sqrt((x3 - x2)**2 + (y3 - y2)**2)
+    d34 = np.sqrt((x4 - x3)**2 + (y4 - y3)**2)
+    d41 = np.sqrt((x1 - x4)**2 + (y1 - y4)**2)
+    
+    m12 = _safe_slope(y2 - y1, x2 - x1)
+    m23 = _safe_slope(y3 - y2, x3 - x2)
+    m34 = _safe_slope(y4 - y3, x4 - x3)
+    m41 = _safe_slope(y1 - y4, x1 - x4)
+    
+    r1 = np.sqrt((x - x1)**2 + (y - y1)**2 + z**2)
+    r2 = np.sqrt((x - x2)**2 + (y - y2)**2 + z**2)
+    r3 = np.sqrt((x - x3)**2 + (y - y3)**2 + z**2)
+    r4 = np.sqrt((x - x4)**2 + (y - y4)**2 + z**2)
+    
+    e1 = (x - x1)**2 + z**2
+    e2 = (x - x2)**2 + z**2
+    e3 = (x - x3)**2 + z**2
+    e4 = (x - x4)**2 + z**2
+    
+    h1 = (x - x1) * (y - y1)
+    h2 = (x - x2) * (y - y2)
+    h3 = (x - x3) * (y - y3)
+    h4 = (x - x4) * (y - y4)
+    
+    phi = 0.0
+    phi += _log_term(x, y, x1, y1, x2, y2, d12, r1, r2)
+    phi += _log_term(x, y, x2, y2, x3, y3, d23, r2, r3)
+    phi += _log_term(x, y, x3, y3, x4, y4, d34, r3, r4)
+    phi += _log_term(x, y, x4, y4, x1, y1, d41, r4, r1)
+    
+    if abs(z) > EPS:
+        atan_sum = 0.0
+        atan_sum += np.arctan2(m12 * e1 - h1, z * r1) - np.arctan2(m12 * e2 - h2, z * r2)
+        atan_sum += np.arctan2(m23 * e2 - h2, z * r2) - np.arctan2(m23 * e3 - h3, z * r3)
+        atan_sum += np.arctan2(m34 * e3 - h3, z * r3) - np.arctan2(m34 * e4 - h4, z * r4)
+        atan_sum += np.arctan2(m41 * e4 - h4, z * r4) - np.arctan2(m41 * e1 - h1, z * r1)
+        
+        phi -= abs(z) * atan_sum
+    
+    return -sigma / (4 * np.pi) * phi
+
+@njit(fastmath=True, cache=True)
+def compute_quad_source_velocity(
+    point: NDArray[np.float64],
+    vertices: NDArray[np.float64],
+    sigma: float = 1.0,
+) -> NDArray[np.float64]:
+    """Compute velocity at a point due to a quad source panel."""
+    x, y, z = point[0], point[1], point[2]
+    
+    x1, y1 = vertices[0, 0], vertices[0, 1]
+    x2, y2 = vertices[1, 0], vertices[1, 1]
+    x3, y3 = vertices[2, 0], vertices[2, 1]
+    x4, y4 = vertices[3, 0], vertices[3, 1]
+    
+    d12 = np.sqrt((x2 - x1)**2 + (y2 - y1)**2) + EPS
+    d23 = np.sqrt((x3 - x2)**2 + (y3 - y2)**2) + EPS
+    d34 = np.sqrt((x4 - x3)**2 + (y4 - y3)**2) + EPS
+    d41 = np.sqrt((x1 - x4)**2 + (y1 - y4)**2) + EPS
+    
+    m12 = _safe_slope(y2 - y1, x2 - x1)
+    m23 = _safe_slope(y3 - y2, x3 - x2)
+    m34 = _safe_slope(y4 - y3, x4 - x3)
+    m41 = _safe_slope(y1 - y4, x1 - x4)
+    
+    r1 = np.sqrt((x - x1)**2 + (y - y1)**2 + z**2) + EPS
+    r2 = np.sqrt((x - x2)**2 + (y - y2)**2 + z**2) + EPS
+    r3 = np.sqrt((x - x3)**2 + (y - y3)**2 + z**2) + EPS
+    r4 = np.sqrt((x - x4)**2 + (y - y4)**2 + z**2) + EPS
+    
+    e1, e2 = (x - x1)**2 + z**2, (x - x2)**2 + z**2
+    e3, e4 = (x - x3)**2 + z**2, (x - x4)**2 + z**2
+    h1, h2 = (x - x1) * (y - y1), (x - x2) * (y - y2)
+    h3, h4 = (x - x3) * (y - y3), (x - x4) * (y - y4)
+    
+    u = ((y2 - y1) / d12 * _log_arg(r1, r2, d12) +
+         (y3 - y2) / d23 * _log_arg(r2, r3, d23) +
+         (y4 - y3) / d34 * _log_arg(r3, r4, d34) +
+         (y1 - y4) / d41 * _log_arg(r4, r1, d41))
+    
+    v = ((x1 - x2) / d12 * _log_arg(r1, r2, d12) +
+         (x2 - x3) / d23 * _log_arg(r2, r3, d23) +
+         (x3 - x4) / d34 * _log_arg(r3, r4, d34) +
+         (x4 - x1) / d41 * _log_arg(r4, r1, d41))
+    
+    w = (_atan_term(m12, e1, h1, z, r1) - _atan_term(m12, e2, h2, z, r2) +
+         _atan_term(m23, e2, h2, z, r2) - _atan_term(m23, e3, h3, z, r3) +
+         _atan_term(m34, e3, h3, z, r3) - _atan_term(m34, e4, h4, z, r4) +
+         _atan_term(m41, e4, h4, z, r4) - _atan_term(m41, e1, h1, z, r1))
+    
+    coeff = sigma / (4 * np.pi)
+    res = np.empty(3)
+    res[0] = coeff * u
+    res[1] = coeff * v
+    res[2] = coeff * w
+    return res
+
+@njit(fastmath=True, cache=True)
+def compute_quad_source_velocity_vectorized(
+    point: NDArray[np.float64],
+    all_vertices: NDArray[np.float64],
+    sigma: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    n_panels = len(sigma)
+    velocity = np.zeros(3, dtype=np.float64)
+    
+    for j in range(n_panels):
+        v_local = compute_quad_source_velocity(point, all_vertices[j], sigma[j])
+        velocity += v_local
+    
+    return velocity
+
+@njit(parallel=True, fastmath=True, cache=True)
+def compute_source_influence_matrix(
+    centers: NDArray[np.float64],
+    normals: NDArray[np.float64],
+    vertices: NDArray[np.float64],
+    panels: NDArray[np.int32],
+) -> NDArray[np.float64]:
+    n_panels = centers.shape[0]
+    A = np.zeros((n_panels, n_panels), dtype=np.float64)
+    
+    for i in prange(n_panels):
+        point = centers[i]
+        normal_i = normals[i]
+        
+        for j in range(n_panels):
+            panel_verts = np.empty((4, 3))
+            panel_verts[0] = vertices[panels[j, 0]]
+            panel_verts[1] = vertices[panels[j, 1]]
+            panel_verts[2] = vertices[panels[j, 2]]
+            panel_verts[3] = vertices[panels[j, 3]]
+            
+            if i == j:
+                A[i, j] = -0.5
+            else:
+                point_local, panel_verts_local = _to_panel_local(point, panel_verts)
+                vel_local = compute_quad_source_velocity(point_local, panel_verts_local, 1.0)
+                vel_global = _velocity_to_global(vel_local, panel_verts)
+                A[i, j] = vel_global[0]*normal_i[0] + vel_global[1]*normal_i[1] + vel_global[2]*normal_i[2]
+    
+    return A
+
+@njit(parallel=True, fastmath=True, cache=True)
+def compute_all_velocities_influence(
+    points: NDArray[np.float64],
+    vertices: NDArray[np.float64],
+    panels: NDArray[np.int32],
+    sigma: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    n_points = points.shape[0]
+    n_panels = len(sigma)
+    velocities = np.zeros((n_points, 3), dtype=np.float64)
+    
+    for i in prange(n_points):
+        point = points[i]
+        for j in range(n_panels):
+            panel_verts = np.empty((4, 3))
+            panel_verts[0] = vertices[panels[j, 0]]
+            panel_verts[1] = vertices[panels[j, 1]]
+            panel_verts[2] = vertices[panels[j, 2]]
+            panel_verts[3] = vertices[panels[j, 3]]
+            
+            point_local, panel_verts_local = _to_panel_local(point, panel_verts)
+            vel_local = compute_quad_source_velocity(point_local, panel_verts_local, sigma[j])
+            vel_global = _velocity_to_global(vel_local, panel_verts)
+            velocities[i, 0] += vel_global[0]
+            velocities[i, 1] += vel_global[1]
+            velocities[i, 2] += vel_global[2]
+            
+    return velocities
+

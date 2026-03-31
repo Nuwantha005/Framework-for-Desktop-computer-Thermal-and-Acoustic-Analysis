@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 
 from core.geometry.mesh3d import Mesh3D
 from .base import PanelSolver3D
-from .influences import compute_source_influence_matrix, compute_source_velocity_influence
+from .influences import compute_source_influence_matrix, compute_all_velocities_influence
 
 
 class SourcePanelSolver3D(PanelSolver3D):
@@ -110,16 +110,14 @@ class SourcePanelSolver3D(PanelSolver3D):
         # Initialize with freestream
         velocity = np.tile(self._v_inf, (n_panels, 1))
         
-        # Add induced velocity from each panel
-        for i in range(n_panels):
-            v_induced = compute_source_velocity_influence(
-                point=self._mesh.centers[i],
-                centers=self._mesh.centers,
-                vertices=self._mesh.nodes,
-                panels=self._mesh.panels,
-                sigma=sigma,
-            )
-            velocity[i] += v_induced
+        # Add induced velocity from all panels at all panel centers
+        v_induced = compute_all_velocities_influence(
+            points=self._mesh.centers,
+            vertices=self._mesh.nodes,
+            panels=self._mesh.panels,
+            sigma=sigma,
+        )
+        velocity += v_induced
         
         # Project out normal component (should be ~0 already, but ensure)
         normals = self._mesh.normals
@@ -141,18 +139,16 @@ class SourcePanelSolver3D(PanelSolver3D):
         n_points = points.shape[0]
         velocity = np.zeros((n_points, 3), dtype=np.float64)
         
-        for i in range(n_points):
-            # Induced velocity
-            v_induced = compute_source_velocity_influence(
-                point=points[i],
-                centers=self._mesh.centers,
-                vertices=self._mesh.nodes,
-                panels=self._mesh.panels,
-                sigma=self._sigma,
-            )
-            
-            # Total = freestream + induced
-            velocity[i] = self._v_inf + v_induced
+        # Induced velocity for all points
+        v_induced = compute_all_velocities_influence(
+            points=points,
+            vertices=self._mesh.nodes,
+            panels=self._mesh.panels,
+            sigma=self._sigma,
+        )
+        
+        # Total = freestream + induced
+        velocity = self._v_inf + v_induced
         
         return velocity
     

@@ -142,4 +142,14 @@
   - `main` — will receive mesh refactoring
   - `3d-panel-solver-implemention` — feature branch for 3D solver
   - `boundary-layer-experimentation` — pushed earlier (thermal BL WIP)
-- **Status**: Planning complete, implementation starting
+## 2026-04-01
+### 3D Panel Solver Implementation - Performance Optimization
+- **What was done**: Profiled and optimized the 3D source panel method solver. Identified the primary bottleneck in the $O(N^2)$ influence matrix and velocity computations running in pure Python. Implemented extensive performance optimizations using Numba JIT compilation (`@njit(fastmath=True, cache=True)`) and parallelization (`prange`) across both influence matrix construction and full-domain induced velocity calculations.
+- **Files modified**:
+  - `src/solvers/panel3d/influences/source3d.py` — JIT-compiled all math functions and added `compute_all_velocities_influence` for parallel multi-point velocity evaluation.
+  - `src/solvers/panel3d/source_panel_solver.py` — Updated to consume the new vectorized/parallelized influence functions for surface velocity calculations.
+  - `src/solvers/panel3d/influences/__init__.py` — Exported new functions.
+  - `profile_solver.py` — Updated testing script to measure and prove timing improvements.
+  - `requirements.txt` — Added `numba>=0.58.0` dependency.
+- **Results**: Build time for a ~2000 panel mesh (level 1) decreased from `>120` seconds to `~0.5` seconds for the influence matrix, and surface velocity computation down to `~0.5` seconds. Tested successfully up to `level 2` (8192 panels, ~26s total solve time on single machine). Validation sphere tests run successfully with zero precision regression.
+- **Status**: Complete

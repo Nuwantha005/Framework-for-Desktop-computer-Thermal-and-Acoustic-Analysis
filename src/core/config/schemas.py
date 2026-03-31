@@ -40,8 +40,9 @@ class TransformConfig(BaseModel):
 
 class GeometryConfig(BaseModel):
     """Parametric geometry configuration."""
-    type: str = Field(..., description="Geometry type (circle, rectangle, rounded_rectangle)")
+    type: str = Field(..., description="Geometry type (circle, rectangle, rounded_rectangle, sphere, box, external)")
     parameters: dict = Field(default_factory=dict, description="Shape parameters (width, height, radius, etc.)")
+    file: Optional[str] = Field(None, description="Path to geometry file for external meshes")
     
     @field_validator('type')
     @classmethod
@@ -86,7 +87,7 @@ class ComponentConfig(BaseModel):
             raise ValueError(f"Component '{self.name}': cannot specify both 'geometry_file' and 'geometry'")
         
         # Validate mesh_levels is provided for parametric geometry
-        if self.geometry is not None and self.mesh_levels is None:
+        if self.geometry is not None and self.geometry.type != "external" and self.mesh_levels is None:
             raise ValueError(f"Component '{self.name}': parametric geometry requires 'mesh_levels'")
         if self.geometry_file is not None and self.mesh_levels is not None:
             raise ValueError(f"Component '{self.name}': 'mesh_levels' only valid for parametric geometry")
@@ -282,11 +283,11 @@ class VisualizationConfig(BaseModel):
     # Domain settings
     domain: Optional[dict] = Field(
         default=None,
-        description="Visualization domain {x_range: [min, max], y_range: [min, max]}"
+        description="Visualization domain {x_range: [min, max], y_range: [min, max], z_range: [min, max]}"
     )
-    resolution: Tuple[int, int] = Field(
+    resolution: Tuple[int, ...] = Field(
         default=(150, 120),
-        description="Grid resolution for field plots (nx, ny)"
+        description="Grid resolution for field plots (nx, ny, [nz])"
     )
     
     # Legacy field (deprecated, use resolution instead)
@@ -318,6 +319,12 @@ class VisualizationConfig(BaseModel):
             return tuple(self.domain['y_range'])
         return default
 
+    def get_z_range(self, default: Tuple[float, float] = (-2.0, 2.0)) -> Tuple[float, float]:
+        """Get z_range from domain or return default."""
+        if self.domain and 'z_range' in self.domain:
+            return tuple(self.domain['z_range'])
+        return default
+
 
 class SimulationConfig(BaseModel):
     """Top-level simulation configuration."""
@@ -328,7 +335,9 @@ class SimulationConfig(BaseModel):
         "parametric_2d",
         "gmsh_2d",
         "gmsh_3d",
-        "step_import"
+        "step_import",
+        "parametric_3d",
+        "external_3d"
     ] = Field(..., description="Case type")
     description: str = Field(default="", description="Case description")
     

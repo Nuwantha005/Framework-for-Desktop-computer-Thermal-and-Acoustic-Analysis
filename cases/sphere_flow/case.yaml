@@ -1,0 +1,32 @@
+name: "Sphere Flow"
+case_type: "parametric_3d"
+
+freestream:
+  velocity: [1.0, 0.0, 0.0]
+
+components:
+  - name: "sphere"
+    geometry:
+      type: "sphere"
+      parameters:
+        radius: 0.5
+        center: [0.0, 0.0, 0.0]
+    mesh_levels:
+      - [16, 32]   # n_theta, n_phi
+      - [32, 64]
+      - [64, 128]
+
+solver:
+  singularity_type: "source"
+  panel_order: "constant"
+  panel_geometry: "flat"
+
+visualization:
+  domain:
+    x_range: [-2.0, 3.0]
+    y_range: [-2.0, 2.0]
+    z_range: [-2.0, 2.0]
+  resolution: [100, 80, 80]
+
+fluid:
+  density: 1.225

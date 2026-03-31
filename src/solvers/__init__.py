@@ -10,11 +10,14 @@ from .factory import SolverFactory
 from .base import Solver
 
 # Register available solvers
-SolverFactory.register("source", "constant", "flat", SourcePanelSolver)
-SolverFactory.register("source", "linear", "flat", LinearSourcePanelSolver)
-SolverFactory.register("vortex", "linear", "flat", LinearVortexPanelSolver)
-SolverFactory.register("source_doublet", "constant", "flat", DirichletDoubletSolver)
-SolverFactory.register("source_doublet", "linear", "flat", LinearSourceDoubletSolver)
+SolverFactory.register(2, "source", "constant", "flat", SourcePanelSolver)
+SolverFactory.register(2, "source", "linear", "flat", LinearSourcePanelSolver)
+SolverFactory.register(2, "vortex", "linear", "flat", LinearVortexPanelSolver)
+SolverFactory.register(2, "source_doublet", "constant", "flat", DirichletDoubletSolver)
+SolverFactory.register(2, "source_doublet", "linear", "flat", LinearSourceDoubletSolver)
+
+# Register 3D solvers
+SolverFactory.register(3, "source", "constant", "flat", SourcePanelSolver3D)
 
 def __getattr__(name):
     """Lazy import for comparison and boundary_layer modules (avoids circular import at init time)."""

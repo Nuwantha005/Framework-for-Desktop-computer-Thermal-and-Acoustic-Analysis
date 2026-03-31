@@ -68,31 +68,38 @@ class CaseLoader:
         for comp_config in config.components:
             # Load geometry: parametric or file-based
             if comp_config.geometry is not None:
-                # Parametric geometry - get resolution from component's mesh_levels
-                if comp_config.mesh_levels is None or len(comp_config.mesh_levels) == 0:
-                    raise ValueError(
-                        f"Component '{comp_config.name}' uses parametric geometry but "
-                        f"no mesh_levels defined"
-                    )
-                
-                # Handle negative indexing
-                num_levels = len(comp_config.mesh_levels)
-                level_idx = mesh_level_index
-                if level_idx < 0:
-                    level_idx = num_levels + level_idx
-                
-                if level_idx < 0 or level_idx >= num_levels:
-                    raise IndexError(
-                        f"Component '{comp_config.name}': mesh_level_index {mesh_level_index} out of range. "
-                        f"Available levels: 0 to {num_levels - 1}"
-                    )
-                
-                resolution = comp_config.mesh_levels[level_idx]
-                geom_def = {
-                    "type": comp_config.geometry.type,
-                    "parameters": comp_config.geometry.parameters
-                }
-                local_mesh = GeometryFactory.create(geom_def, resolution)
+                if comp_config.geometry.type == "external":
+                    if comp_config.geometry.file is None:
+                        raise ValueError(f"Component '{comp_config.name}': external geometry requires a 'file' parameter")
+                    from ..geometry.io.stl_reader import read_mesh
+                    geom_path = base_path / comp_config.geometry.file
+                    local_mesh = read_mesh(geom_path)
+                else:
+                    # Parametric geometry - get resolution from component's mesh_levels
+                    if comp_config.mesh_levels is None or len(comp_config.mesh_levels) == 0:
+                        raise ValueError(
+                            f"Component '{comp_config.name}' uses parametric geometry but "
+                            f"no mesh_levels defined"
+                        )
+                    
+                    # Handle negative indexing
+                    num_levels = len(comp_config.mesh_levels)
+                    level_idx = mesh_level_index
+                    if level_idx < 0:
+                        level_idx = num_levels + level_idx
+                    
+                    if level_idx < 0 or level_idx >= num_levels:
+                        raise IndexError(
+                            f"Component '{comp_config.name}': mesh_level_index {mesh_level_index} out of range. "
+                            f"Available levels: 0 to {num_levels - 1}"
+                        )
+                    
+                    resolution = comp_config.mesh_levels[level_idx]
+                    geom_def = {
+                        "type": comp_config.geometry.type,
+                        "parameters": comp_config.geometry.parameters
+                    }
+                    local_mesh = GeometryFactory.create(geom_def, resolution)
             else:
                 # Legacy file-based geometry
                 if comp_config.geometry_file is None:

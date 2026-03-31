@@ -196,7 +196,6 @@ class Component:
         global_mesh = Mesh(
             nodes=global_nodes,
             panels=self.local_mesh.panels.copy(),
-            dimension=self.local_mesh.dimension,
             component_ids=np.full(self.local_mesh.num_panels, component_id, dtype=np.int32)
         )
         

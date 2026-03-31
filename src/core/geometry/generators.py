@@ -55,7 +55,7 @@ def generate_circle(
     
     component_ids = np.zeros(panels.shape[0], dtype=np.int32)
     
-    return Mesh(nodes=nodes, panels=panels, dimension=2, component_ids=component_ids)
+    return Mesh(nodes=nodes, panels=panels, component_ids=component_ids)
 
 
 def generate_rectangle(
@@ -115,7 +115,7 @@ def generate_rectangle(
     
     component_ids = np.zeros(panels.shape[0], dtype=np.int32)
     
-    return Mesh(nodes=nodes, panels=panels, dimension=2, component_ids=component_ids)
+    return Mesh(nodes=nodes, panels=panels, component_ids=component_ids)
 
 
 def generate_rounded_rectangle(
@@ -219,4 +219,4 @@ def generate_rounded_rectangle(
     
     component_ids = np.zeros(panels.shape[0], dtype=np.int32)
     
-    return Mesh(nodes=nodes, panels=panels, dimension=2, component_ids=component_ids)
+    return Mesh(nodes=nodes, panels=panels, component_ids=component_ids)

@@ -62,7 +62,7 @@ class TestMesh:
         panels = np.array([[0, 1], [1, 2], [2, 3], [3, 0]], dtype=np.int32)
         component_ids = np.zeros(4, dtype=np.int32)
         
-        mesh = Mesh(nodes=nodes, panels=panels, dimension=2, component_ids=component_ids)
+        mesh = Mesh(nodes=nodes, panels=panels, component_ids=component_ids)
         
         assert mesh.num_nodes == 4
         assert mesh.num_panels == 4
@@ -80,10 +80,10 @@ class TestMesh:
         assert abs(mesh.areas[0] - 1.0) < 1e-10
     
     def test_generate_rectangle(self):
-        mesh = generate_rectangle(width=2.0, height=1.0, center=(0.0, 0.0))
+        mesh = generate_rectangle(num_panels_x=1, num_panels_y=1, width=2.0, height=1.0, center=(0.0, 0.0))
         
         assert mesh.is_2d
-        assert mesh.num_panels == 4  # Default 1 panel per side
+        assert mesh.num_panels == 4  # 1 panel per side = 4 total
         
         # Check bounds
         x_coords = mesh.nodes[:, 0]
@@ -140,7 +140,7 @@ class TestComponent:
     
     def test_component_transform(self):
         # Create unit square mesh
-        local_mesh = generate_rectangle(width=1.0, height=1.0, center=(0.0, 0.0))
+        local_mesh = generate_rectangle(num_panels_x=1, num_panels_y=1, width=1.0, height=1.0, center=(0.0, 0.0))
         
         # Transform: translate by (2, 3)
         transform = Transform.from_2d(tx=2.0, ty=3.0, angle_deg=0.0)
@@ -169,7 +169,7 @@ class TestScene:
     
     def test_single_component_scene(self):
         # Single square
-        local_mesh = generate_rectangle(width=1.0, height=1.0)
+        local_mesh = generate_rectangle(num_panels_x=1, num_panels_y=1, width=1.0, height=1.0)
         transform = Transform.identity()
         
         component = Component(
@@ -192,8 +192,8 @@ class TestScene:
     
     def test_two_component_scene(self):
         # Two squares at different positions
-        mesh1 = generate_rectangle(width=1.0, height=1.0)
-        mesh2 = generate_rectangle(width=1.0, height=1.0)
+        mesh1 = generate_rectangle(num_panels_x=1, num_panels_y=1, width=1.0, height=1.0)
+        mesh2 = generate_rectangle(num_panels_x=1, num_panels_y=1, width=1.0, height=1.0)
         
         transform1 = Transform.from_2d(tx=-2.0, ty=0.0, angle_deg=0.0)
         transform2 = Transform.from_2d(tx=2.0, ty=0.0, angle_deg=0.0)

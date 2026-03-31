@@ -125,3 +125,21 @@
   - `plot_wall_quantity_envelope_overlay()` — overlay on same body
   - `plot_wall_quantity_envelopes_grid()` — 2x2 grid of all quantities
 - **Status**: Complete
+
+## 2026-03-31
+### 3D Panel Solver Implementation - Session Start
+- **What was done**: Planned 3D panel solver extension, documented architecture decisions, created implementation plan.
+- **Files created**:
+  - `.agent/plans/3d-panel-solver.md` — comprehensive 4-phase implementation plan
+  - `.agent/decisions/002-3d-panel-solver-architecture.md` — ADR for mesh hierarchy, panel type, visualization choices
+- **Key decisions**:
+  - Refactor mesh to `MeshBase`/`Mesh2D`/`Mesh3D` hierarchy
+  - Quad panels only (not triangles)
+  - pygmsh for sphere generation, meshio for STL import
+  - VTK export for ParaView visualization
+  - Phase 0 refactoring on `main`, Phases 1-3 on `3d-panel-solver-implemention` branch
+- **Branches**:
+  - `main` — will receive mesh refactoring
+  - `3d-panel-solver-implemention` — feature branch for 3D solver
+  - `boundary-layer-experimentation` — pushed earlier (thermal BL WIP)
+- **Status**: Planning complete, implementation starting

@@ -157,7 +157,6 @@ class GeometryReader:
         mesh = Mesh(
             nodes=nodes,
             panels=panels,
-            dimension=2,
             component_ids=component_ids
         )
         

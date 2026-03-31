@@ -134,7 +134,6 @@ class Scene:
         global_mesh = Mesh(
             nodes=global_nodes,
             panels=global_panels,
-            dimension=dimension,
             component_ids=global_component_ids
         )
         

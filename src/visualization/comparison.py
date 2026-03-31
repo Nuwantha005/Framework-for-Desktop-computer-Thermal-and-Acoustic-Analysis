@@ -782,6 +782,8 @@ class ComparisonVisualizer:
                         
                         s_comp = data.s[mask]
                         y_comp = getattr(data, quantity)[mask]
+                        if quantity == 'Vt':
+                            y_comp = np.abs(y_comp)
                         
                         # Sort by arc length before plotting
                         sort_idx = np.argsort(s_comp)
@@ -813,6 +815,8 @@ class ComparisonVisualizer:
                     sort_idx = np.argsort(data.s)
                     s_sorted = data.s[sort_idx]
                     y_sorted = getattr(data, quantity)[sort_idx]
+                    if quantity == 'Vt':
+                        y_sorted = np.abs(y_sorted)
                     
                     # Plot entire surface
                     ax.plot(
@@ -855,6 +859,10 @@ class ComparisonVisualizer:
         """
         y1 = getattr(surface1, quantity)
         y2_orig = getattr(surface2, quantity)
+        
+        if quantity == 'Vt':
+            y1 = np.abs(y1)
+            y2_orig = np.abs(y2_orig)
         
         if interpolate:
             # Interpolate surface2 to surface1 arc lengths

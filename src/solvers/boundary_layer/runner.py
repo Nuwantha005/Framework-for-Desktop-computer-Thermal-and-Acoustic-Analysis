@@ -528,22 +528,38 @@ class BoundaryLayerRunner:
 
     def _find_stagnation_points(self) -> Tuple[int, int]:
         """
-        Identify forward and rear stagnation panels via ``n · V̂∞``.
-
-        Forward stagnation
-            Most negative ``n · V̂∞`` — outward normal opposes the
-            freestream (points into the wind).
-
-        Rear stagnation
-            Most positive ``n · V̂∞`` — outward normal is aligned with
-            the freestream (points downwind).
+        Identify forward and rear stagnation panels.
+        
+        For bluff bodies with flat faces, many panels might have the same
+        ``n · V̂∞``. We find all panels near the minimum/maximum and select
+        the one with the lowest tangential velocity to ensure the true
+        stagnation point is the start of the split paths.
         """
         normals_2d = self.case.mesh.normals[:, :2]         # (M, 2)
         v_inf_2d = self.solver.v_inf_vector[:2]             # (2,)
         v_inf_unit = v_inf_2d / np.linalg.norm(v_inf_2d)
 
         n_dot_v = normals_2d @ v_inf_unit                   # (M,)
-        return int(np.argmin(n_dot_v)), int(np.argmax(n_dot_v))
+        
+        # We need the local tangential velocity magnitude to break ties.
+        # But we must compute it carefully without relying on the solver's 
+        # potentially absolute-valued Vt yet.
+        from postprocessing.surface import SurfaceDataExtractor
+        extractor = SurfaceDataExtractor(self.case.mesh, self.solver)
+        surface = extractor.extract(arc_length=False)
+        Vt = np.abs(surface.Vt)
+        
+        # Forward stagnation
+        min_ndotv = np.min(n_dot_v)
+        fwd_candidates = np.where(np.isclose(n_dot_v, min_ndotv, atol=1e-3))[0]
+        i_fwd = int(fwd_candidates[np.argmin(Vt[fwd_candidates])])
+        
+        # Rear stagnation
+        max_ndotv = np.max(n_dot_v)
+        rear_candidates = np.where(np.isclose(n_dot_v, max_ndotv, atol=1e-3))[0]
+        i_rear = int(rear_candidates[np.argmin(Vt[rear_candidates])])
+        
+        return i_fwd, i_rear
 
     def _split_paths(
         self,

@@ -150,8 +150,6 @@ class PanelSolver2D(Solver):
             influence_matrices, strengths
         )
         
-        self._surface_velocity = np.abs(self._surface_velocity) # To ease the comparison using plots because opernfom results gives only the magnitude.
-        
         # Store in mesh for backward compatibility with existing code
         self._mesh.cell_data['Vt'] = self._surface_velocity
         

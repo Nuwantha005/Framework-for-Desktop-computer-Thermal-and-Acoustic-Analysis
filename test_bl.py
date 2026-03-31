@@ -1,19 +1,16 @@
-import numpy as np
-from src.solvers.boundary_layer.base import BoundaryLayerSolver
-from src.solvers.boundary_layer.profiles.thwaites import ThwaitesProfile
+import sys
+sys.path.append("src")
+from core.io.case_loader import CaseLoader
+from postprocessing.surface import SurfaceDataExtractor
+from solvers.boundary_layer.runner import BoundaryLayerRunner
 
-s = np.linspace(0, 1, 100)
-Ue = s  # Ue = s, so dUe/ds = 1
+case = CaseLoader.load_case("cases/rounded_square", mesh_level_index=4)
+solver = case.create_solver()
+solver.solve()
 
-solver = BoundaryLayerSolver(
-    edge_velocity=Ue,
-    arc_length=s,
-    nu=1e-5,
-    profile=ThwaitesProfile()
-)
+runner = BoundaryLayerRunner(case, solver)
+bl = runner.run()
 
-res = solver.solve()
-print("s:", res.s[:10])
-print("cf:", res.cf[:10])
-print("Ue:", res.Ue[:10])
-print("theta:", res.theta[:10])
+print("Upper profiles:", bl.upper.results.keys())
+print("Lower profiles:", bl.lower.results.keys())
+

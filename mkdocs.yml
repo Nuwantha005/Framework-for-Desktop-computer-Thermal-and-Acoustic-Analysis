@@ -34,6 +34,7 @@ nav:
   - Theory:
       - Overview: theory/panel_methods_overview.md
       - Constant Source Panels: theory/constant_source_panels.md
+      - 3D Constant Source Panels: theory/3d_constant_source_panels.md
       - Linear Source Panels: theory/linear_source_panels.md
       - Linear Vortex Panels: theory/linear_vortex_panels.md
       - Dirichlet Doublet Panels: theory/dirichlet_doublet_panels.md

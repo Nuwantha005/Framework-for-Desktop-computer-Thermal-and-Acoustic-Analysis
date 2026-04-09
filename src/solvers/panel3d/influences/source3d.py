@@ -337,6 +337,60 @@ def compute_source_influence_matrix(
     
     return A
 
+
+@njit(fastmath=False, cache=True)
+def _precompute_panel_geometry(
+    panel_verts: NDArray[np.float64],
+) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    center = np.zeros(3)
+    for i in range(4):
+        center += panel_verts[i]
+    center /= 4.0
+    
+    d1 = panel_verts[2] - panel_verts[0]
+    d2 = panel_verts[3] - panel_verts[1]
+    
+    normal = np.empty(3)
+    normal[0] = d2[1]*d1[2] - d2[2]*d1[1]
+    normal[1] = d2[2]*d1[0] - d2[0]*d1[2]
+    normal[2] = d2[0]*d1[1] - d2[1]*d1[0]
+    
+    n_norm = np.sqrt(normal[0]**2 + normal[1]**2 + normal[2]**2) + 1e-12
+    normal /= n_norm
+    
+    edge1 = panel_verts[1] - panel_verts[0]
+    edge1_mag = np.sqrt(edge1[0]**2 + edge1[1]**2 + edge1[2]**2)
+    
+    local_x = np.empty(3)
+    if edge1_mag > 1e-12:
+        local_x = edge1 / edge1_mag
+    else:
+        edge2 = panel_verts[2] - panel_verts[1]
+        e2_norm = np.sqrt(edge2[0]**2 + edge2[1]**2 + edge2[2]**2) + 1e-12
+        local_x = edge2 / e2_norm
+    
+    local_y = np.empty(3)
+    local_y[0] = normal[1]*local_x[2] - normal[2]*local_x[1]
+    local_y[1] = normal[2]*local_x[0] - normal[0]*local_x[2]
+    local_y[2] = normal[0]*local_x[1] - normal[1]*local_x[0]
+    
+    y_norm = np.sqrt(local_y[0]**2 + local_y[1]**2 + local_y[2]**2) + 1e-12
+    local_y /= y_norm
+    
+    RT = np.empty((3, 3))
+    RT[0, 0] = local_x[0]; RT[0, 1] = local_x[1]; RT[0, 2] = local_x[2]
+    RT[1, 0] = local_y[0]; RT[1, 1] = local_y[1]; RT[1, 2] = local_y[2]
+    RT[2, 0] = normal[0]; RT[2, 1] = normal[1]; RT[2, 2] = normal[2]
+    
+    verts_local = np.empty((4, 3))
+    for i in range(4):
+        v_rel = panel_verts[i] - center
+        verts_local[i, 0] = RT[0,0]*v_rel[0] + RT[0,1]*v_rel[1] + RT[0,2]*v_rel[2]
+        verts_local[i, 1] = RT[1,0]*v_rel[0] + RT[1,1]*v_rel[1] + RT[1,2]*v_rel[2]
+        verts_local[i, 2] = RT[2,0]*v_rel[0] + RT[2,1]*v_rel[1] + RT[2,2]*v_rel[2]
+        
+    return center, RT, verts_local
+
 @njit(parallel=True, fastmath=False, cache=True)
 def compute_all_velocities_influence(
     points: NDArray[np.float64],
@@ -346,23 +400,52 @@ def compute_all_velocities_influence(
 ) -> NDArray[np.float64]:
     n_points = points.shape[0]
     n_panels = len(sigma)
+    
+    # Precompute panel local geometry
+    centers = np.empty((n_panels, 3), dtype=np.float64)
+    RTs = np.empty((n_panels, 3, 3), dtype=np.float64)
+    verts_locals = np.empty((n_panels, 4, 3), dtype=np.float64)
+    
+    for j in range(n_panels):
+        panel_verts = np.empty((4, 3))
+        for k in range(4):
+            panel_verts[k] = vertices[panels[j, k]]
+        c, rt, vl = _precompute_panel_geometry(panel_verts)
+        centers[j] = c
+        RTs[j] = rt
+        verts_locals[j] = vl
+        
     velocities = np.zeros((n_points, 3), dtype=np.float64)
     
     for i in prange(n_points):
         point = points[i]
+        vx = 0.0
+        vy = 0.0
+        vz = 0.0
         for j in range(n_panels):
-            panel_verts = np.empty((4, 3))
-            panel_verts[0] = vertices[panels[j, 0]]
-            panel_verts[1] = vertices[panels[j, 1]]
-            panel_verts[2] = vertices[panels[j, 2]]
-            panel_verts[3] = vertices[panels[j, 3]]
+            c = centers[j]
+            rt = RTs[j]
+            vl = verts_locals[j]
             
-            point_local, panel_verts_local = _to_panel_local(point, panel_verts)
-            vel_local = compute_quad_source_velocity(point_local, panel_verts_local, sigma[j])
-            vel_global = _velocity_to_global(vel_local, panel_verts)
-            velocities[i, 0] += vel_global[0]
-            velocities[i, 1] += vel_global[1]
-            velocities[i, 2] += vel_global[2]
+            p_rel_0 = point[0] - c[0]
+            p_rel_1 = point[1] - c[1]
+            p_rel_2 = point[2] - c[2]
+            
+            p_loc_0 = rt[0,0]*p_rel_0 + rt[0,1]*p_rel_1 + rt[0,2]*p_rel_2
+            p_loc_1 = rt[1,0]*p_rel_0 + rt[1,1]*p_rel_1 + rt[1,2]*p_rel_2
+            p_loc_2 = rt[2,0]*p_rel_0 + rt[2,1]*p_rel_1 + rt[2,2]*p_rel_2
+            
+            point_local = np.array([p_loc_0, p_loc_1, p_loc_2])
+            
+            vel_local = compute_quad_source_velocity(point_local, vl, sigma[j])
+            
+            # R is RT.T
+            vx += rt[0,0]*vel_local[0] + rt[1,0]*vel_local[1] + rt[2,0]*vel_local[2]
+            vy += rt[0,1]*vel_local[0] + rt[1,1]*vel_local[1] + rt[2,1]*vel_local[2]
+            vz += rt[0,2]*vel_local[0] + rt[1,2]*vel_local[1] + rt[2,2]*vel_local[2]
+            
+        velocities[i, 0] = vx
+        velocities[i, 1] = vy
+        velocities[i, 2] = vz
             
     return velocities
-

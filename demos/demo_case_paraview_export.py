@@ -77,7 +77,30 @@ def _volume_export(
     xx, yy, zz = np.meshgrid(x, y, z, indexing="ij")
 
     points = np.column_stack([xx.ravel(order="C"), yy.ravel(order="C"), zz.ravel(order="C")])
-    vel = solver.velocity_at(points)
+
+    # Convert our mesh to PV PolyData for interior masking
+    verts = solver._mesh.nodes
+    faces = []
+    for p in solver._mesh.panels:
+        faces.append(len(p))
+        faces.extend(p)
+    surface_pd = pv.PolyData(verts, faces)
+    
+    print("Masking interior points...")
+    grid = pv.StructuredGrid(xx, yy, zz)
+    
+    enclosed = grid.select_enclosed_points(surface_pd, check_surface=False)
+    mask = enclosed['SelectedPoints'] == 1
+    
+    vel = np.zeros((points.shape[0], 3), dtype=np.float64)
+    vel[:] = np.nan
+    
+    exterior_mask = ~mask
+    exterior_points = points[exterior_mask]
+    
+    print(f"Computing velocity for {len(exterior_points)} exterior points out of {len(points)}...")
+    vel[exterior_mask] = solver.velocity_at(exterior_points)
+
     speed = np.linalg.norm(vel, axis=1)
 
     rho = float(config.fluid.density)
@@ -91,7 +114,6 @@ def _volume_export(
         cp = np.full_like(speed, np.nan, dtype=np.float64)
     pressure = p_ref + q_inf * cp
 
-    grid = pv.StructuredGrid(xx, yy, zz)
     grid.point_data["velocity"] = vel
     grid.point_data["velocity_magnitude"] = speed
     grid.point_data["Cp"] = cp

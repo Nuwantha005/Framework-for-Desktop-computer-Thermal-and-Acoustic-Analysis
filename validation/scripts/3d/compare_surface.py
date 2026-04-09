@@ -17,7 +17,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 # Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from core.io.case_loader import CaseLoader
 from solvers.factory import SolverFactory

@@ -18,14 +18,14 @@ from numba import njit, prange
 # Small number for numerical stability
 EPS = 1e-12
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=False, cache=True)
 def _safe_slope(dy: float, dx: float) -> float:
     """Compute slope handling vertical edges."""
     if abs(dx) < EPS:
         return 1e10 * np.sign(dy) if abs(dy) > EPS else 0.0
     return dy / dx
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=False, cache=True)
 def _log_term(
     x: float, y: float,
     x1: float, y1: float,
@@ -48,7 +48,7 @@ def _log_term(
     
     return (num / d) * np.log(denom_plus / denom_minus)
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=False, cache=True)
 def _log_arg(r1: float, r2: float, d: float) -> float:
     """Compute log argument for velocity formula."""
     denom_minus = r1 + r2 - d
@@ -61,14 +61,14 @@ def _log_arg(r1: float, r2: float, d: float) -> float:
     
     return np.log(denom_minus / denom_plus)
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=False, cache=True)
 def _atan_term(m: float, e: float, h: float, z: float, r: float) -> float:
     """Compute arctangent term for w velocity."""
     if abs(z) < EPS or abs(r) < EPS:
         return 0.0
     return np.arctan2(m * e - h, z * r)
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=False, cache=True)
 def _to_panel_local(
     point: NDArray[np.float64],
     panel_verts: NDArray[np.float64],
@@ -138,7 +138,7 @@ def _to_panel_local(
         
     return point_local, verts_local
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=False, cache=True)
 def _velocity_to_global(
     vel_local: NDArray[np.float64],
     panel_verts: NDArray[np.float64],
@@ -179,7 +179,7 @@ def _velocity_to_global(
     
     return vel_global
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=False, cache=True)
 def compute_quad_source_potential(
     point: NDArray[np.float64],
     vertices: NDArray[np.float64],
@@ -235,7 +235,7 @@ def compute_quad_source_potential(
     
     return -sigma / (4 * np.pi) * phi
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=False, cache=True)
 def compute_quad_source_velocity(
     point: NDArray[np.float64],
     vertices: NDArray[np.float64],
@@ -291,7 +291,7 @@ def compute_quad_source_velocity(
     res[2] = coeff * w
     return res
 
-@njit(fastmath=True, cache=True)
+@njit(fastmath=False, cache=True)
 def compute_quad_source_velocity_vectorized(
     point: NDArray[np.float64],
     all_vertices: NDArray[np.float64],
@@ -306,7 +306,7 @@ def compute_quad_source_velocity_vectorized(
     
     return velocity
 
-@njit(parallel=True, fastmath=True, cache=True)
+@njit(parallel=True, fastmath=False, cache=True)
 def compute_source_influence_matrix(
     centers: NDArray[np.float64],
     normals: NDArray[np.float64],
@@ -337,7 +337,7 @@ def compute_source_influence_matrix(
     
     return A
 
-@njit(parallel=True, fastmath=True, cache=True)
+@njit(parallel=True, fastmath=False, cache=True)
 def compute_all_velocities_influence(
     points: NDArray[np.float64],
     vertices: NDArray[np.float64],

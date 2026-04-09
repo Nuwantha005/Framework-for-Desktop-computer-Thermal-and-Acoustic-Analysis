@@ -12,8 +12,12 @@ components:
         radius: 0.5
         center: [0.0, 0.0, 0.0]
     mesh_levels:
-      - [16, 32]   # n_theta, n_phi
+      - [16, 32] # n_theta, n_phi
+      - [24, 48]
       - [32, 64]
+      - [40, 80]
+      - [48, 96]
+      - [56, 112]
       - [64, 128]
 
 solver:

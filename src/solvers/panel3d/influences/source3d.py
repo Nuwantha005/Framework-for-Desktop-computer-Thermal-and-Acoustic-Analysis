@@ -66,7 +66,7 @@ def _atan_term(m: float, e: float, h: float, z: float, r: float) -> float:
     """Compute arctangent term for w velocity."""
     if abs(z) < EPS or abs(r) < EPS:
         return 0.0
-    return np.arctan2(m * e - h, z * r)
+    return np.arctan((m * e - h) / (z * r))
 
 @njit(fastmath=False, cache=True)
 def _to_panel_local(

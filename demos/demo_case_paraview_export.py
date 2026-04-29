@@ -76,7 +76,9 @@ def _volume_export(
     z = np.linspace(z_range[0], z_range[1], nz, dtype=np.float64)
     xx, yy, zz = np.meshgrid(x, y, z, indexing="ij")
 
-    points = np.column_stack([xx.ravel(order="C"), yy.ravel(order="C"), zz.ravel(order="C")])
+    # Create the PyVista grid FIRST so we can use its correctly ordered points
+    grid = pv.StructuredGrid(xx, yy, zz)
+    points = grid.points  # This correctly uses VTK's Fortran ordering
 
     # Convert our mesh to PV PolyData for interior masking
     verts = solver._mesh.nodes
@@ -87,8 +89,6 @@ def _volume_export(
     surface_pd = pv.PolyData(verts, faces)
     
     print("Masking interior points...")
-    grid = pv.StructuredGrid(xx, yy, zz)
-    
     enclosed = grid.select_enclosed_points(surface_pd, check_surface=False)
     mask = enclosed['SelectedPoints'] == 1
     

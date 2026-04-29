@@ -33,6 +33,7 @@ class GeometryFactory:
         "rectangle": generators.generate_rectangle,
         "rounded_rectangle": generators.generate_rounded_rectangle,
         "sphere": sphere_generator.generate_sphere,
+        "cylinder": sphere_generator.generate_cylinder,
     }
     
     @classmethod

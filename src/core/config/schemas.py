@@ -40,7 +40,7 @@ class TransformConfig(BaseModel):
 
 class GeometryConfig(BaseModel):
     """Parametric geometry configuration."""
-    type: str = Field(..., description="Geometry type (circle, rectangle, rounded_rectangle, sphere, box, external)")
+    type: str = Field(..., description="Geometry type (circle, rectangle, rounded_rectangle, sphere, cylinder, box, external)")
     parameters: dict = Field(default_factory=dict, description="Shape parameters (width, height, radius, etc.)")
     file: Optional[str] = Field(None, description="Path to geometry file for external meshes")
     

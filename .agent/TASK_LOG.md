@@ -153,3 +153,15 @@
   - `requirements.txt` — Added `numba>=0.58.0` dependency.
 - **Results**: Build time for a ~2000 panel mesh (level 1) decreased from `>120` seconds to `~0.5` seconds for the influence matrix, and surface velocity computation down to `~0.5` seconds. Tested successfully up to `level 2` (8192 panels, ~26s total solve time on single machine). Validation sphere tests run successfully with zero precision regression.
 - **Status**: Complete
+
+## 2026-04-29
+### Add Cylinder Generator + Circular Vent Case
+- **What was done**: Added an open cylinder (shell) parametric generator for 3D cases and created a circular vent case definition (1.0 m length, 120 mm diameter).
+- **Files modified**:
+  - `src/core/geometry/io/sphere_generator.py` — added `generate_cylinder()`
+  - `src/core/geometry/io/__init__.py` — export cylinder generator
+  - `src/core/geometry/factory.py` — register `"cylinder"` type
+  - `src/core/config/schemas.py` — update geometry type description
+- **Files created**:
+  - `cases/cicular_vent/case.yaml` — circular vent case definition
+- **Status**: Complete

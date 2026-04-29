@@ -1,0 +1,35 @@
+name: "Circular Vent"
+case_type: "parametric_3d"
+description: "Circular vent shell (open cylinder)"
+
+freestream:
+  velocity: [1.0, 0.0, 0.0]
+
+components:
+  - name: "vent_shell"
+    geometry:
+      type: "cylinder"
+      parameters:
+        radius: 0.06
+        length: 1.0
+        center: [0.0, 0.0, 0.0]
+        axis: "z"
+    mesh_levels:
+      - [24, 12] # n_theta, n_length
+      - [36, 18]
+      - [48, 24]
+
+solver:
+  singularity_type: "source"
+  panel_order: "constant"
+  panel_geometry: "flat"
+
+visualization:
+  domain:
+    x_range: [-0.5, 0.5]
+    y_range: [-0.5, 0.5]
+    z_range: [-0.8, 0.8]
+  resolution: [120, 120, 120]
+
+fluid:
+  density: 1.225

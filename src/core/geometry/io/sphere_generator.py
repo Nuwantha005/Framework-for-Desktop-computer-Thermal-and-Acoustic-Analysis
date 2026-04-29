@@ -1,8 +1,9 @@
 """
-Parametric 3D mesh generators using pygmsh/gmsh.
+Parametric 3D mesh generators.
 
 Currently supports:
 - UV sphere with quad panels
+- Open cylinder shell with quad panels
 """
 
 from __future__ import annotations
@@ -83,6 +84,79 @@ def generate_sphere(
     panels = np.array(panels, dtype=np.int32)
     component_ids = np.zeros(len(panels), dtype=np.int32)
     
+    return Mesh3D(
+        nodes=nodes,
+        panels=panels,
+        component_ids=component_ids
+    )
+
+
+def generate_cylinder(
+    n_theta: int = 32,
+    n_length: int = 16,
+    radius: float = 1.0,
+    length: float = 1.0,
+    center: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    axis: str = "z",
+) -> Mesh3D:
+    """
+    Generate an open cylinder shell mesh with quadrilateral panels.
+
+    The cylinder is aligned to the specified axis and centered at `center`.
+    This creates only the lateral surface (no end caps).
+
+    Args:
+        n_theta: Number of divisions around circumference
+        n_length: Number of divisions along cylinder axis
+        radius: Cylinder radius
+        length: Cylinder length
+        center: Center coordinates (cx, cy, cz)
+        axis: Axis of cylinder ("x", "y", or "z")
+
+    Returns:
+        Mesh3D with n_theta * n_length quad panels
+    """
+    if n_theta < 3:
+        raise ValueError("n_theta must be >= 3")
+    if n_length < 1:
+        raise ValueError("n_length must be >= 1")
+    axis = axis.lower()
+    if axis not in {"x", "y", "z"}:
+        raise ValueError(f"Unsupported axis '{axis}'. Use 'x', 'y', or 'z'.")
+
+    cx, cy, cz = center
+    phi = np.linspace(0.0, 2.0 * np.pi, n_theta + 1)[:-1]
+    s = np.linspace(-0.5 * length, 0.5 * length, n_length + 1)
+
+    S, PHI = np.meshgrid(s, phi, indexing="ij")
+
+    if axis == "z":
+        X = cx + radius * np.cos(PHI)
+        Y = cy + radius * np.sin(PHI)
+        Z = cz + S
+    elif axis == "x":
+        X = cx + S
+        Y = cy + radius * np.cos(PHI)
+        Z = cz + radius * np.sin(PHI)
+    else:  # axis == "y"
+        X = cx + radius * np.cos(PHI)
+        Y = cy + S
+        Z = cz + radius * np.sin(PHI)
+
+    nodes = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+
+    panels = []
+    for i in range(n_length):
+        for j in range(n_theta):
+            n00 = i * n_theta + j
+            n01 = i * n_theta + (j + 1) % n_theta
+            n10 = (i + 1) * n_theta + j
+            n11 = (i + 1) * n_theta + (j + 1) % n_theta
+            panels.append([n00, n10, n11, n01])
+
+    panels = np.array(panels, dtype=np.int32)
+    component_ids = np.zeros(len(panels), dtype=np.int32)
+
     return Mesh3D(
         nodes=nodes,
         panels=panels,

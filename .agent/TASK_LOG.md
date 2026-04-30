@@ -165,3 +165,15 @@
 - **Files created**:
   - `cases/cicular_vent/case.yaml` — circular vent case definition
 - **Status**: Complete
+
+## 2026-04-30
+### Actuator Disk Model Planning
+- **What was done**: Reviewed ADM implementation prompt, ADM theory notes, existing 3D solver architecture, solver factory, circular vent case, and current solver module documentation. Defined the ADM architecture as a solver-agnostic 3D coupling layer that creates the configured body solver through `SolverFactory` and applies actuator disk influence as a known RHS disturbance.
+- **Files created**:
+  - `.agent/plans/adm-implementation.md` — implementation plan for ADM schema, fan curves, disk mesh generation, 3D solver coupling, persistence, visualization/export, docs, and tests.
+- **Key decisions**:
+  - Use `normal` in `case.yaml` to define disk orientation and positive flow direction.
+  - Keep ADM coupled to the `PanelSolver3D`/`SolverFactory` path instead of hard-coding `SourcePanelSolver3D`.
+  - Add a minimal 3D solver hook for external normal-velocity disturbances so future 3D singularity solvers can participate without major rewrites.
+  - Skip Fluent validation execution until Fluent exports are available.
+- **Status**: Planned

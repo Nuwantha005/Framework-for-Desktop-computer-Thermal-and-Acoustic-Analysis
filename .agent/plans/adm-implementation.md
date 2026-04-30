@@ -1,7 +1,7 @@
 # Actuator Disk Model (ADM) Implementation Plan
 
 **Created**: 2026-04-30  
-**Status**: Planned  
+**Status**: Initial implementation complete  
 **Scope**: Simple pressure-jump actuator disk model coupled to configurable 3D panel solvers.
 
 ## Goals

@@ -83,7 +83,7 @@ class PanelSolver3D(Solver):
     
     # --- Solver interface implementation ---
     
-    def solve(self) -> None:
+    def solve(self, normal_velocity_disturbance: Optional[NDArray[np.float64]] = None) -> None:
         """
         Execute the panel method solver.
         
@@ -92,7 +92,22 @@ class PanelSolver3D(Solver):
         2. Assemble and solve linear system for source strengths
         3. Compute surface velocity from strengths
         4. Store results in mesh.cell_data
+
+        Args:
+            normal_velocity_disturbance: Optional known external normal velocity
+                at body panel centers. Used by coupled models such as ADM.
         """
+        if normal_velocity_disturbance is not None:
+            disturbance = np.asarray(normal_velocity_disturbance, dtype=np.float64)
+            if disturbance.shape != (self._mesh.num_panels,):
+                raise ValueError(
+                    "normal_velocity_disturbance must have shape "
+                    f"({self._mesh.num_panels},), got {disturbance.shape}"
+                )
+            self._external_normal_velocity = disturbance
+        else:
+            self._external_normal_velocity = None
+
         # Step 1: Build influence matrix
         influence_matrix = self._compute_influence_matrix()
         

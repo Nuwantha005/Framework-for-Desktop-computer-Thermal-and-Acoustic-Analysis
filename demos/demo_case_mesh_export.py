@@ -43,8 +43,9 @@ def main() -> int:
         print(f"Error: case.yaml not found at {case_yaml}")
         return 1
 
-    scene, config = CaseLoader.load(case_yaml, mesh_level_index=args.mesh_level)
-    mesh = scene.assemble()
+    case = CaseLoader.load_case(case_dir, mesh_level_index=args.mesh_level)
+    config = case.config
+    mesh = case.mesh
     if mesh.dimension != 3:
         print(f"Error: expected 3D mesh, got dimension={mesh.dimension}")
         return 1
@@ -58,6 +59,23 @@ def main() -> int:
 
     print(f"Exported mesh for case '{config.name}':")
     print(f"  - {out_path}")
+
+    if config.actuator_disks:
+        from solvers.actuator import generate_actuator_disk_mesh
+
+        adm_dir = case_dir / "out" / "adm"
+        adm_dir.mkdir(parents=True, exist_ok=True)
+        for index, disk in enumerate(config.actuator_disks):
+            disk_mesh = generate_actuator_disk_mesh(
+                center=disk.center,
+                normal=disk.normal,
+                radius=disk.radius,
+                n_r=disk.n_r,
+                n_theta=disk.n_theta,
+            )
+            disk_path = adm_dir / f"{index:02d}_{disk.name}_mesh.vtp"
+            export_mesh_vtk(disk_mesh, disk_path)
+            print(f"  - {disk_path}")
     return 0
 
 

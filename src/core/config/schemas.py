@@ -213,6 +213,64 @@ class ThermalConfig(BaseModel):
     )
 
 
+class ActuatorDiskConfig(BaseModel):
+    """Configuration for one actuator disk / fan."""
+    name: str = Field(..., description="Unique actuator disk identifier")
+    center: Tuple[float, float, float] = Field(
+        ...,
+        description="Disk center coordinates [m]"
+    )
+    normal: Tuple[float, float, float] = Field(
+        ...,
+        description="Disk normal; defines positive flow and pressure-rise direction"
+    )
+    radius: float = Field(..., gt=0, description="Disk radius [m]")
+    n_r: int = Field(default=6, ge=1, description="Number of radial disk subdivisions")
+    n_theta: int = Field(default=48, ge=3, description="Number of azimuthal disk subdivisions")
+    curve_file: str = Field(..., description="Fan P-Q curve CSV path relative to case directory")
+    interpolation: Literal["linear", "cubic"] = Field(
+        default="linear",
+        description="Fan curve interpolation method"
+    )
+    dp_initial: Optional[float] = Field(
+        default=None,
+        description="Initial pressure rise [Pa]. If omitted, use curve midpoint."
+    )
+    relaxation: float = Field(
+        default=0.4,
+        gt=0,
+        le=1,
+        description="Under-relaxation factor for P-Q iteration"
+    )
+    tolerance: float = Field(
+        default=1e-3,
+        gt=0,
+        description="Pressure-rise convergence tolerance [Pa]"
+    )
+    max_iterations: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum P-Q iterations"
+    )
+
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v):
+        """Check name is valid."""
+        if not v or not v.strip():
+            raise ValueError("Actuator disk name cannot be empty")
+        return v.strip()
+
+    @field_validator('normal')
+    @classmethod
+    def validate_normal(cls, v):
+        """Check disk normal is nonzero."""
+        norm_sq = sum(component * component for component in v)
+        if norm_sq <= 1e-24:
+            raise ValueError("Actuator disk normal must be nonzero")
+        return v
+
+
 class OutputConfig(BaseModel):
     """Output configuration."""
     directory: str = Field(
@@ -381,6 +439,11 @@ class SimulationConfig(BaseModel):
         default_factory=ThermalConfig,
         description="Thermal boundary layer solver settings (optional)"
     )
+
+    actuator_disks: List[ActuatorDiskConfig] = Field(
+        default_factory=list,
+        description="Actuator disk / fan definitions (optional)"
+    )
     
     class Config:
         """Pydantic config."""
@@ -395,6 +458,16 @@ class SimulationConfig(BaseModel):
         if len(names) != len(set(names)):
             duplicates = [name for name in names if names.count(name) > 1]
             raise ValueError(f"Duplicate component names: {set(duplicates)}")
+        return v
+
+    @field_validator('actuator_disks')
+    @classmethod
+    def check_unique_actuator_disk_names(cls, v):
+        """Ensure actuator disk names are unique."""
+        names = [disk.name for disk in v]
+        if len(names) != len(set(names)):
+            duplicates = [name for name in names if names.count(name) > 1]
+            raise ValueError(f"Duplicate actuator disk names: {set(duplicates)}")
         return v
     
     def get_freestream_velocity(self) -> Tuple[float, float, float]:

@@ -177,3 +177,51 @@
   - Add a minimal 3D solver hook for external normal-velocity disturbances so future 3D singularity solvers can participate without major rewrites.
   - Skip Fluent validation execution until Fluent exports are available.
 - **Status**: Planned
+
+### Simple Actuator Disk Model Implementation
+- **What was done**: Implemented the first simple ADM slice for 3D panel coupling. Added optional case schema support, fan-curve loading/interpolation, polar actuator disk mesh generation, point-doublet disk influence, a solver-agnostic `ActuatorDiskCoupledSolver3D` wrapper, persistence/plotting outputs, and a 3D body-solver RHS disturbance hook. Cases without `actuator_disks` continue to create the configured solver directly.
+- **Files created**:
+  - `src/solvers/actuator/` — ADM package (`fan_curve`, `disk_mesh`, `doublet_influence`, `coupling`, `models`, `persistence`, `plotting`)
+  - `docs/theory/actuator_disk_model.md` — theory, sign convention, P-Q loop, limitations
+  - `src/test/test_actuator_disk.py` — focused tests for curve loading, disk mesh, doublet mapping, and solver factory paths
+- **Files modified**:
+  - `src/core/config/schemas.py` — optional `actuator_disks` schema
+  - `src/core/io/case.py` — create ADM coupled solver only when 3D actuator disks are present
+  - `src/solvers/factory.py` — preserve true 3D freestream vectors for 3D solvers
+  - `src/solvers/panel3d/base.py` and `source_panel_solver.py` — optional normal-velocity disturbance hook
+  - `demos/demo_case_mesh_export.py` — export actuator disk meshes alongside body mesh
+  - `cases/cicular_vent/case.yaml` — placeholder 120 mm fan config and z-axis freestream
+  - `docs/modules/solver.md`, `.agent/modules/solver.md` — ADM architecture notes
+- **Checks run**:
+  - `python -m pytest src/test/test_actuator_disk.py -q` — 5 passed
+  - `python -m pytest src/test/test_geometry_foundation.py src/test/test_actuator_disk.py -q` — 19 passed
+  - `python -m pytest src/test -q` — 23 passed
+  - Circular vent ADM smoke solve completed and wrote `out/adm/` + `out/solverRuns/`; placeholder fan data did not converge within configured iterations because the operating point sits near the fan-curve tail.
+  - `python demos/demo_case_mesh_export.py cases/cicular_vent --mesh-level 0 --output-name mesh_level_0_with_adm.vtp` — exported body and disk meshes.
+- **Status**: Initial implementation complete; Fluent validation intentionally not run.
+
+### ADM Demo and Fan-Curve Bounds Handling
+- **What was done**: Added a runnable ADM demo script with `--case`, made direct execution of `src/test/test_actuator_disk.py` explain pytest/demo usage, added fan-curve progression plotting, and stopped ADM iterations immediately when evaluated flow rate leaves the supplied fan-curve bounds.
+- **Files created**:
+  - `demos/demo_actuator_disk.py` — runs a case, prints ADM iteration output, and exports body/disk artifacts.
+- **Files modified**:
+  - `src/solvers/actuator/fan_curve.py` — exposed fan-curve bounds and range checking.
+  - `src/solvers/actuator/coupling.py` — early stop + warning on out-of-bounds fan operating point.
+  - `src/solvers/actuator/plotting.py` — added `adm_fan_curve_progression.png`.
+  - `src/solvers/actuator/models.py`, `demos/README.md`, `docs/modules/solver.md`, `docs/theory/actuator_disk_model.md`, `src/test/test_actuator_disk.py`.
+- **Checks run**:
+  - `python demos/demo_actuator_disk.py --case cases/cicular_vent --mesh-level 0`
+  - `python demos/demo_actuator_disk.py --case cases/cicular_vent --mesh-level -1 --no-surface-export`
+  - `python -m pytest src/test/test_actuator_disk.py -q` — 5 passed
+  - `python -m pytest src/test -q` — 23 passed
+- **Status**: Complete
+
+### ADM Stationary Ambient Operating Mode
+- **What was done**: Updated the circular vent setup to use zero freestream for fan-driven flow, changed ADM pressure-jump scaling to use a disk-radius length scale and fan-curve velocity scale when freestream is stationary, and sampled disk flow on offset planes so the disk-induced field contributes without evaluating on the singular sheet.
+- **Rationale**: A prescribed `1 m/s` freestream was acting as an artificial inlet velocity and forcing the flow rate outside the fan operating range. For the P12 PWM curve, the max-speed operating condition is already represented by the supplied P-Q data; RPM/PWM only needs explicit handling when scaling to a different speed.
+- **Checks run**:
+  - `python demos/demo_actuator_disk.py --case cases/cicular_vent --mesh-level 0` — converged in 19 iterations
+  - `python demos/demo_actuator_disk.py --case cases/cicular_vent --mesh-level -1 --no-surface-export` — converged in 13 iterations
+  - `python -m pytest src/test/test_actuator_disk.py -q` — 5 passed
+  - `python -m pytest src/test -q` — 23 passed
+- **Status**: Complete

@@ -76,6 +76,8 @@ class SourcePanelSolver3D(PanelSolver3D):
         
         # RHS: -V_∞ · n for each panel
         b = -np.einsum('ij,j->i', normals, self._v_inf)
+        if getattr(self, "_external_normal_velocity", None) is not None:
+            b -= self._external_normal_velocity
         
         # Solve linear system
         try:

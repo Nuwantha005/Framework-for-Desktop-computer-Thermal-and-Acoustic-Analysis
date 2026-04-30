@@ -1,5 +1,27 @@
 # Solver Module
 
+## Actuator Disk Coupling
+
+The 3D solver path supports optional actuator disks through
+`ActuatorDiskCoupledSolver3D`. Cases without `actuator_disks` continue to create
+the configured panel solver directly. Cases with disks create a coupled wrapper
+that uses `SolverFactory` to instantiate the configured 3D body solver, then
+adds actuator disk doublet influence as a known normal-velocity disturbance on
+the body-panel RHS.
+
+The first supported body solver is the registered constant-source 3D solver.
+Future 3D singularity solvers should honor the same
+`normal_velocity_disturbance` solve hook to participate in ADM coupling.
+
+Actuator disk outputs are written to `case/out/adm/`; reusable solve bundles are
+written to `case/out/solverRuns/`.
+
+ADM plotting currently writes both `adm_convergence.png` and
+`adm_fan_curve_progression.png`. The coupled iteration stops early with a
+warning if an evaluated fan flow rate leaves the tabulated P-Q curve bounds.
+For fan-driven quiescent cases, set the case freestream to zero; ADM initializes
+its velocity scale from the fan curve rather than imposing an inlet velocity.
+
 The solver module (`solvers`) implements panel method solvers using an abstract base class hierarchy with a factory registry for config-driven creation.
 
 ## Architecture

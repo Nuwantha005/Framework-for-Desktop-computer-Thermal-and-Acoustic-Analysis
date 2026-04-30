@@ -133,11 +133,16 @@ class SolverFactory:
             solver_class = cls._registry[key]
             if dimension == 3:
                 import numpy as np
-                v_inf_vec = np.array([
-                    v_inf * np.cos(np.deg2rad(aoa)),
-                    v_inf * np.sin(np.deg2rad(aoa)),
-                    0.0
-                ])
+                v_arr = np.asarray(v_inf, dtype=np.float64)
+                if v_arr.shape == (3,):
+                    v_inf_vec = v_arr
+                else:
+                    speed = float(v_arr)
+                    v_inf_vec = np.array([
+                        speed * np.cos(np.deg2rad(aoa)),
+                        speed * np.sin(np.deg2rad(aoa)),
+                        0.0
+                    ])
                 return solver_class(mesh=mesh, v_inf=v_inf_vec)
             else:
                 return solver_class(mesh=mesh, v_inf=v_inf, aoa=aoa)
@@ -158,11 +163,16 @@ class SolverFactory:
                 solver_class = cls._registry[fallback_key]
                 if dimension == 3:
                     import numpy as np
-                    v_inf_vec = np.array([
-                        v_inf * np.cos(np.deg2rad(aoa)),
-                        v_inf * np.sin(np.deg2rad(aoa)),
-                        0.0
-                    ])
+                    v_arr = np.asarray(v_inf, dtype=np.float64)
+                    if v_arr.shape == (3,):
+                        v_inf_vec = v_arr
+                    else:
+                        speed = float(v_arr)
+                        v_inf_vec = np.array([
+                            speed * np.cos(np.deg2rad(aoa)),
+                            speed * np.sin(np.deg2rad(aoa)),
+                            0.0
+                        ])
                     return solver_class(mesh=mesh, v_inf=v_inf_vec)
                 else:
                     return solver_class(mesh=mesh, v_inf=v_inf, aoa=aoa)

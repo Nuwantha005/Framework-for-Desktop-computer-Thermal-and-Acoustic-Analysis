@@ -1,6 +1,14 @@
 # Solver Module State
 **Last modified**: 2026-03-28 (Thermal BL solver integration)
 
+## ADM Update
+- `solvers/actuator/` — simple actuator disk model for 3D panel coupling.
+- `ActuatorDiskCoupledSolver3D` wraps the configured 3D panel solver from
+  `SolverFactory`; it is not hard-wired to `SourcePanelSolver3D`.
+- 3D solvers can support ADM by honoring
+  `solve(normal_velocity_disturbance=...)` in the body-panel RHS.
+- Cases without `actuator_disks` follow the existing solver path unchanged.
+
 ## Files
 - `solvers/base.py` — `Solver` ABC: `solve()`, `surface_velocity`, `velocity_at(points)`, `is_solved`, `mesh`
 - `solvers/factory.py` — `SolverFactory`: registry `(singularity, order, geometry) → class`; `register()`, `create()`, `create_panel_solver()`, `available()`, `is_registered()`

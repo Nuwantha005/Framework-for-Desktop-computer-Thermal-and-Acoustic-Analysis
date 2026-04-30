@@ -6,6 +6,7 @@ from .panel2d.linear_vortex_solver import LinearVortexPanelSolver
 from .panel2d.dirichlet_doublet_solver import DirichletDoubletSolver
 from .panel2d.linear_source_doublet_solver import LinearSourceDoubletSolver
 from .panel3d import SourcePanelSolver3D, PanelSolver3D
+from .actuator import ActuatorDiskCoupledSolver3D
 from .factory import SolverFactory
 from .base import Solver
 
@@ -51,6 +52,7 @@ __all__ = [
     "LinearSourceDoubletSolver",
     "SourcePanelSolver3D",
     "PanelSolver3D",
+    "ActuatorDiskCoupledSolver3D",
     "SolverFactory",
     "Solver",
     "SolverComparisonRunner",

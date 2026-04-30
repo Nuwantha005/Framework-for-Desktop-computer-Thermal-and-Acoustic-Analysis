@@ -259,6 +259,15 @@ class Case:
         """
         from solvers.factory import SolverFactory
 
+        if (
+            solver_type is None
+            and self.mesh.dimension == 3
+            and self.config.actuator_disks
+        ):
+            from solvers.actuator import ActuatorDiskCoupledSolver3D
+
+            return ActuatorDiskCoupledSolver3D.from_case(self)
+
         if solver_type is not None:
             from core.config.schemas import SolverConfig
             override = SolverConfig(
@@ -269,14 +278,14 @@ class Case:
             return SolverFactory.create(
                 config=override,
                 mesh=self.mesh,
-                v_inf=self.v_inf,
+                v_inf=self.freestream if self.mesh.dimension == 3 else self.v_inf,
                 aoa=self.aoa,
             )
 
         return SolverFactory.create(
             config=self.config.solver,
             mesh=self.mesh,
-            v_inf=self.v_inf,
+            v_inf=self.freestream if self.mesh.dimension == 3 else self.v_inf,
             aoa=self.aoa,
         )
     

@@ -1,4 +1,4 @@
-"""Point-doublet approximation for actuator disk influence."""
+"""Constant-strength doublet approximation for actuator disk influence."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from core.geometry.mesh3d import Mesh3D
+from solvers.panel3d.influences.doublet3d import compute_all_doublet_velocities
 
 
 def pressure_jump_to_doublet_strength(
@@ -30,16 +31,16 @@ def compute_point_doublet_velocity(
     points: NDArray[np.float64],
     disk_mesh: Mesh3D,
     doublet_strength: NDArray[np.float64],
-    exclude_self: bool = False,
 ) -> NDArray[np.float64]:
-    """Compute velocity induced by disk panels using point doublets.
+    """Compute velocity induced by disk panels using constant-strength doublets.
+    
+    A constant-strength doublet panel is mathematically equivalent to a vortex
+    ring around its perimeter, avoiding the leakage issues of point-doublets.
 
     Args:
         points: Evaluation points, shape ``(M, 3)``.
         disk_mesh: Disk panel mesh.
         doublet_strength: Potential jump on each disk panel.
-        exclude_self: Skip panel self-influence when points align with disk
-            centers and counts match.
 
     Returns:
         Induced velocity at points, shape ``(M, 3)``.
@@ -48,28 +49,12 @@ def compute_point_doublet_velocity(
     if points.ndim == 1:
         points = points.reshape(1, 3)
 
-    centers = np.asarray(disk_mesh.centers, dtype=np.float64)
-    normals = np.asarray(disk_mesh.normals, dtype=np.float64)
-    areas = np.asarray(disk_mesh.areas, dtype=np.float64)
-    mu = np.asarray(doublet_strength, dtype=np.float64)
-
-    velocities = np.zeros((points.shape[0], 3), dtype=np.float64)
-    eps2 = 1e-16
-    for j, center in enumerate(centers):
-        moment = mu[j] * areas[j] * normals[j]
-        r = points - center
-        r2 = np.einsum("ij,ij->i", r, r)
-        if exclude_self and points.shape[0] == centers.shape[0]:
-            r2[j] = np.inf
-        r2 = np.maximum(r2, eps2)
-        r_mag = np.sqrt(r2)
-        mdotr = r @ moment
-        coeff = 1.0 / (4.0 * np.pi)
-        velocities += coeff * (
-            3.0 * r * mdotr[:, None] / (r_mag[:, None] ** 5)
-            - moment / (r_mag[:, None] ** 3)
-        )
-    return velocities
+    return compute_all_doublet_velocities(
+        points=points,
+        vertices=disk_mesh.nodes,
+        panels=disk_mesh.panels,
+        mu=doublet_strength,
+    )
 
 
 def compute_disk_normal_velocity(

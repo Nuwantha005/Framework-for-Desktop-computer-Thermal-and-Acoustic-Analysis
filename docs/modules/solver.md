@@ -6,8 +6,8 @@ The 3D solver path supports optional actuator disks through
 `ActuatorDiskCoupledSolver3D`. Cases without `actuator_disks` continue to create
 the configured panel solver directly. Cases with disks create a coupled wrapper
 that uses `SolverFactory` to instantiate the configured 3D body solver, then
-adds actuator disk doublet influence as a known normal-velocity disturbance on
-the body-panel RHS.
+adds actuator disk constant-strength doublet influence (vortex rings) as a known
+normal-velocity disturbance on the body-panel RHS.
 
 The first supported body solver is the registered constant-source 3D solver.
 Future 3D singularity solvers should honor the same

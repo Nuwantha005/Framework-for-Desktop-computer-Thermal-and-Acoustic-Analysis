@@ -37,7 +37,7 @@ A 2D panel method solver for potential flow analysis, part of a Final Year Proje
 - [ ] Thermal boundary layer solver (BDIM)
 - [ ] Coupled inviscid-viscous iteration
 - [ ] 3D panel method
-- [ ] Actuator disk model (fans)
+- [x] Actuator disk model (fans)
 
 ## Module Map
 ```
@@ -156,7 +156,7 @@ src/
 - `test_foundation.py` uses print-based assertions, not pytest
 - `spm.py` has debug `print()` statements in `compute_source_influence_matrices`
 - No conftest.py or pytest fixtures
-- Placeholder directories exist for panel3d, thermal, actuator (boundary_layer now populated)
+- Placeholder directories exist for panel3d, thermal
 - `foamlib` and `trimesh` not listed in requirements.txt but imported in validation/
 
 ## Agent Infrastructure

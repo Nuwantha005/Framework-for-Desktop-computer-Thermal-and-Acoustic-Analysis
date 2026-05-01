@@ -245,3 +245,24 @@
   - `python -m pytest src/test/test_actuator_disk.py -q` — 5 passed
   - `python -m pytest src/test -q` — 23 passed
 - **Status**: Complete
+
+### ADM Constant Strength Doublet Integration
+- **What was done**: Replaced point-doublet approximations with mathematically correct constant-strength doublet panels for the Actuator Disk Model (ADM). Point doublets suffered from tip-leakage where flow looped backwards inside the duct; constant doublets (equivalent to vortex rings around panel perimeters) enforce a contiguous pressure jump sheet, channeling flow properly to the duct ends.
+- **Files created**:
+  - `src/solvers/actuator/doublet_influence.py` — implemented exact quad doublet velocity using `compute_all_doublet_velocities` from `doublet3d.py`.
+- **Files deleted**:
+  - `src/solvers/actuator/source_influence.py` — removed abandoned source panel test file.
+- **Files modified**:
+  - `docs/theory/actuator_disk_model.md` — updated theory docs reflecting the shift to contiguous doublet sheets (vortex rings).
+- **Checks run**:
+  - `pytest src/test/test_actuator_disk.py` — 5 passed.
+- **Status**: Complete
+
+### ADM Sign Convention Fix
+- **What was done**: Fixed a sign issue in the exact quad doublet velocity calculation. `Mesh3D` uses `(p4-p2)x(p3-p1)` for normal generation, meaning geometry generators produce clockwise-ordered panels to point outward. A standard positive CCW vortex ring implies that CW panels induce velocity *opposite* to their normal. Subtracted the Biot-Savart segment contributions so that a positive doublet (a dipole pointing along the normal) correctly induces flow in the `+n` direction. This resolves the negative flow rate seen during the first ADM iteration.
+- **Files modified**:
+  - `src/solvers/panel3d/influences/doublet3d.py` — reversed signs in `compute_quad_doublet_velocity` and `compute_all_doublet_velocities`.
+- **Checks run**:
+  - `python demos/demo_actuator_disk.py --case cases/cicular_vent --mesh-level -1` — ADM correctly yields positive flow rate and converges successfully in 13 iterations.
+  - `pytest src/test -q` — 23 passed.
+- **Status**: Complete

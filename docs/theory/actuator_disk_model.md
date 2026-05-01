@@ -34,10 +34,12 @@ so the right-hand side is modified as
 A sigma = -(V_inf dot n_body + V_adm dot n_body)
 ```
 
-The first implementation uses a point-doublet approximation for each disk panel:
-the panel moment is `mu * area * n_disk`, evaluated at the panel center. This is
-simple, modular, and adequate for early fan-system coupling studies, but it can
-be replaced later with exact quadrilateral doublet influence coefficients.
+The implementation uses constant-strength doublet panels for the disk:
+A constant-strength doublet panel is mathematically equivalent to a vortex ring
+around its perimeter. When tiled together, the internal edges cancel out, leaving
+a single vortex ring at the outer rim of the fan. This contiguous sheet prevents
+flow from looping backwards locally (unlike point doublets), ensuring duct walls
+correctly channel the momentum without rapid velocity decay.
 
 ## Pressure Jump Convention
 
@@ -86,7 +88,7 @@ under `out/solverRuns/`.
 
 - No swirl.
 - Uniform pressure loading over each disk.
-- Point-doublet panel approximation.
+- Constant-strength doublet panel approximation.
 - No Kutta condition for duct trailing edges yet.
 - No branch-wake or disk-rim singularity mitigation yet.
 - Fluent comparison is scaffolded separately and should be run only when Fluent

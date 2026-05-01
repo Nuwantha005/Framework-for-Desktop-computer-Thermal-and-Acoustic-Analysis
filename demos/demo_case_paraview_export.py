@@ -23,7 +23,6 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.io.case_loader import CaseLoader
-from solvers.factory import SolverFactory
 from core.geometry.io.vtk_export import export_solution_vtk
 
 
@@ -81,9 +80,9 @@ def _volume_export(
     points = grid.points  # This correctly uses VTK's Fortran ordering
 
     # Convert our mesh to PV PolyData for interior masking
-    verts = solver._mesh.nodes
+    verts = solver.mesh.nodes
     faces = []
-    for p in solver._mesh.panels:
+    for p in solver.mesh.panels:
         faces.append(len(p))
         faces.extend(p)
     surface_pd = pv.PolyData(verts, faces)
@@ -124,20 +123,15 @@ def _volume_export(
 
 def _run_panel_solver(case_dir: Path, mesh_level: int):
     """Load 3D case and solve panel solver using full freestream vector."""
-    scene, config = CaseLoader.load(case_dir / "case.yaml", mesh_level_index=mesh_level)
-    mesh = scene.assemble()
+    case = CaseLoader.load_case(case_dir, mesh_level_index=mesh_level)
+    config = case.config
+    mesh = case.mesh
     if mesh.dimension != 3:
         raise ValueError(f"Expected a 3D case/mesh, got dimension={mesh.dimension}")
 
-    freestream = np.asarray(config.get_freestream_velocity(), dtype=np.float64)
-    solver = SolverFactory.create(
-        config=config.solver,
-        mesh=mesh,
-        v_inf=float(np.linalg.norm(freestream)),
-        aoa=0.0,
-    )
-    # Keep full 3D freestream direction (same pattern as compare_surface.py).
-    solver._v_inf = freestream
+    solver = case.create_solver()
+    if config.actuator_disks:
+        print(f"Actuator disks detected: {len(config.actuator_disks)}. Using ADM-coupled solver.")
     solver.solve()
     return mesh, solver, config
 

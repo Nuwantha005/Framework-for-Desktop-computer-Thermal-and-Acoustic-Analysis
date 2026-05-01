@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
 from core.io.case_loader import CaseLoader
-from solvers.factory import SolverFactory
 
 def main():
     parser = argparse.ArgumentParser()
@@ -26,17 +25,12 @@ def main():
     args = parser.parse_args()
 
     case_dir = args.case_dir.resolve()
-    scene, config = CaseLoader.load(case_dir / "case.yaml", mesh_level_index=args.mesh_level)
-    mesh = scene.assemble()
-
-    freestream = np.asarray(config.get_freestream_velocity(), dtype=np.float64)
-    solver = SolverFactory.create(
-        config=config.solver,
-        mesh=mesh,
-        v_inf=float(np.linalg.norm(freestream)),
-        aoa=0.0,
-    )
-    solver._v_inf = freestream
+    case = CaseLoader.load_case(case_dir, mesh_level_index=args.mesh_level)
+    config = case.config
+    freestream = case.freestream
+    solver = case.create_solver()
+    if config.actuator_disks:
+        print(f"Actuator disks detected: {len(config.actuator_disks)}. Using ADM-coupled solver.")
     print("Solving panel method...")
     solver.solve()
 
@@ -81,7 +75,10 @@ def main():
     
     # Mask out extreme values (e.g. inside body or singularities)
     v_inf_mag = np.linalg.norm(freestream)
-    speed_2d_plot = np.where(speed_2d > 5 * v_inf_mag, np.nan, speed_2d)
+    if v_inf_mag > 1e-12:
+        speed_2d_plot = np.where(speed_2d > 5 * v_inf_mag, np.nan, speed_2d)
+    else:
+        speed_2d_plot = speed_2d
     
     if args.axis == 'z':
         c = ax.contourf(xx, yy, speed_2d_plot, levels=50, cmap='viridis')

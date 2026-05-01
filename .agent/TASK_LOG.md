@@ -225,3 +225,23 @@
   - `python -m pytest src/test/test_actuator_disk.py -q` — 5 passed
   - `python -m pytest src/test -q` — 23 passed
 - **Status**: Complete
+
+### Route 3D Export Scripts Through Case Solver
+- **What was done**: Updated generic 3D visualization/export scripts to use `CaseLoader.load_case(...).create_solver()` so cases with `actuator_disks` automatically run the ADM-coupled solver instead of bypassing it with direct `SolverFactory` calls.
+- **Files modified**:
+  - `validation/scripts/3d/surface_streamlines.py`
+  - `validation/scripts/3d/vector_glyphs.py`
+  - `validation/scripts/3d/plot_cut_plane.py`
+  - `validation/scripts/3d/compare_surface.py`
+  - `validation/scripts/3d/convergence_study.py`
+  - `demos/demo_case_paraview_export.py`
+  - `src/solvers/panel3d/base.py` — zero-freestream Cp guard
+  - `docs/modules/solver.md`, `.agent/modules/solver.md`
+- **Checks run**:
+  - `python validation/scripts/3d/surface_streamlines.py cases/cicular_vent` — ADM-coupled solve and VTP export
+  - `python validation/scripts/3d/plot_cut_plane.py cases/cicular_vent --mesh-level 0 --resolution 30 --axis z --offset 0.0`
+  - `python demos/demo_case_paraview_export.py cases/cicular_vent --mesh-level 0 --resolution 8 8 8 --output-dir cases/cicular_vent/out/panel_solver/adm_smoke`
+  - `python validation/scripts/3d/compare_surface.py cases/cicular_vent --mesh-level 0`
+  - `python -m pytest src/test/test_actuator_disk.py -q` — 5 passed
+  - `python -m pytest src/test -q` — 23 passed
+- **Status**: Complete

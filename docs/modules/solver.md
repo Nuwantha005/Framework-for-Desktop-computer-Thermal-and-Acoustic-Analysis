@@ -21,6 +21,9 @@ ADM plotting currently writes both `adm_convergence.png` and
 warning if an evaluated fan flow rate leaves the tabulated P-Q curve bounds.
 For fan-driven quiescent cases, set the case freestream to zero; ADM initializes
 its velocity scale from the fan curve rather than imposing an inlet velocity.
+Generic 3D export/visualization scripts should create solvers through
+`Case.create_solver()` so actuator disks in the case config are automatically
+coupled.
 
 The solver module (`solvers`) implements panel method solvers using an abstract base class hierarchy with a factory registry for config-driven creation.
 

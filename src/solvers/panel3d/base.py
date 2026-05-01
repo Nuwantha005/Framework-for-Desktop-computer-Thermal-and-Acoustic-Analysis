@@ -167,6 +167,8 @@ class PanelSolver3D(Solver):
         
         V_mag = np.linalg.norm(self._surface_velocity, axis=1)
         V_inf_mag = self.v_inf_magnitude
+        if V_inf_mag <= 1e-14:
+            return np.full(self._mesh.num_panels, np.nan, dtype=np.float64)
         
         return 1.0 - (V_mag / V_inf_mag) ** 2
     

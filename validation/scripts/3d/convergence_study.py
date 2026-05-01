@@ -19,39 +19,32 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from core.io.case_loader import CaseLoader
-from solvers.factory import SolverFactory
 
 
 def run_convergence(case_dir: Path, test_point: np.ndarray):
     print(f"Running grid convergence study for {case_dir.name}...")
     
     # Load just to find how many mesh levels exist
-    _, config = CaseLoader.load(case_dir / "case.yaml")
-    comp = config.components[0]
-    num_levels = len(comp.mesh_levels) if comp.mesh_levels else 1
+    base_case = CaseLoader.load_case(case_dir)
+    num_levels = base_case.num_mesh_levels or 1
     
     num_panels_list = []
     test_pt_vel_list = []
     max_vt_list = []
     
-    freestream = config.get_freestream_velocity()
-    
     for level in range(num_levels):
         print(f"\nEvaluating Mesh Level {level}...")
-        scene, _ = CaseLoader.load(case_dir / "case.yaml", mesh_level_index=level)
-        mesh = scene.assemble()
+        case = CaseLoader.load_case(case_dir, mesh_level_index=level)
+        config = case.config
+        mesh = case.mesh
         
         num_panels = mesh.num_panels
         num_panels_list.append(num_panels)
         print(f"  Panels: {num_panels}")
         
-        solver = SolverFactory.create(
-            config=config.solver,
-            mesh=mesh,
-            v_inf=freestream[0],
-            aoa=0.0
-        )
-        solver._v_inf = np.asarray(freestream, dtype=np.float64)
+        solver = case.create_solver()
+        if config.actuator_disks:
+            print(f"  Actuator disks detected: {len(config.actuator_disks)}. Using ADM-coupled solver.")
         solver.solve()
         
         # Metric 1: Max surface velocity (L_inf)

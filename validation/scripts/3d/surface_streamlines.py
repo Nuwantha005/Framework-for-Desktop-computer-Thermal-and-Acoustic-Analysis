@@ -18,7 +18,6 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from core.io.case_loader import CaseLoader
-from solvers.factory import SolverFactory
 from core.geometry.io.vtk_export import export_solution_vtk
 
 def main():
@@ -34,20 +33,15 @@ def main():
         return 1
         
     print(f"Loading case from {case_dir} at mesh level {args.mesh_level}...")
-    scene, config = CaseLoader.load(case_dir / "case.yaml", mesh_level_index=args.mesh_level)
-    
-    mesh = scene.assemble()
+    case = CaseLoader.load_case(case_dir, mesh_level_index=args.mesh_level)
+    config = case.config
+    mesh = case.mesh
     print(f"Panel Method Mesh: {mesh.num_panels} panels.")
-    
-    freestream = config.get_freestream_velocity()
-    solver = SolverFactory.create(
-        config=config.solver,
-        mesh=mesh,
-        v_inf=freestream[0],
-        aoa=0.0
-    )
-    solver._v_inf = np.asarray(freestream, dtype=np.float64)
-    
+
+    solver = case.create_solver()
+    if config.actuator_disks:
+        print(f"Actuator disks detected: {len(config.actuator_disks)}. Using ADM-coupled solver.")
+
     print("Solving panel method...")
     solver.solve()
     

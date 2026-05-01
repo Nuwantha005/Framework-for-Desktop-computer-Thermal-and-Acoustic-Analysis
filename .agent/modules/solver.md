@@ -8,6 +8,8 @@
 - 3D solvers can support ADM by honoring
   `solve(normal_velocity_disturbance=...)` in the body-panel RHS.
 - Cases without `actuator_disks` follow the existing solver path unchanged.
+- Generic 3D scripts should call `Case.create_solver()` rather than
+  `SolverFactory.create()` directly, otherwise ADM coupling is bypassed.
 
 ## Files
 - `solvers/base.py` — `Solver` ABC: `solve()`, `surface_velocity`, `velocity_at(points)`, `is_solved`, `mesh`

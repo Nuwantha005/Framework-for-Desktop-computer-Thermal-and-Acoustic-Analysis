@@ -20,7 +20,6 @@ from scipy.spatial import cKDTree
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from core.io.case_loader import CaseLoader
-from solvers.factory import SolverFactory
 from core.geometry.io.vtk_export import export_solution_vtk
 from src.validation.adapters.fluent.ascii_reader_3d import find_fluent_3d_export, read_3d_surface_data
 
@@ -28,21 +27,15 @@ from src.validation.adapters.fluent.ascii_reader_3d import find_fluent_3d_export
 def run_panel_solver(case_dir, mesh_level):
     """Load case, assemble mesh, and run panel solver."""
     print(f"Loading case from {case_dir} at mesh level {mesh_level}...")
-    scene, config = CaseLoader.load(case_dir / "case.yaml", mesh_level_index=mesh_level)
-    
-    mesh = scene.assemble()
+    case = CaseLoader.load_case(case_dir, mesh_level_index=mesh_level)
+    config = case.config
+    mesh = case.mesh
     print(f"Panel Method Mesh: {mesh.num_panels} panels.")
-    
-    freestream = config.get_freestream_velocity()
-    solver = SolverFactory.create(
-        config=config.solver,
-        mesh=mesh,
-        v_inf=freestream[0],
-        aoa=0.0
-    )
-    # Inject exact 3D freestream vector
-    solver._v_inf = np.asarray(freestream, dtype=np.float64)
-    
+
+    solver = case.create_solver()
+    if config.actuator_disks:
+        print(f"Actuator disks detected: {len(config.actuator_disks)}. Using ADM-coupled solver.")
+
     print("Solving panel method...")
     solver.solve()
     print("Panel method solve complete.")
@@ -149,19 +142,22 @@ def main():
         rho = config.fluid.density
         v_inf_mag = np.linalg.norm(config.get_freestream_velocity())
         q_inf = 0.5 * rho * v_inf_mag**2
-        # Assuming Fluent pressure is gauge pressure and freestream P=0
-        Cp_fluent = interp_data["pressure_fluent"] / q_inf
-        Cp_diff = Cp_panel - Cp_fluent
-        
-        mesh.cell_data["Cp_fluent"] = Cp_fluent
-        mesh.cell_data["Cp_difference"] = Cp_diff
-        
-        print("\n" + "="*50)
-        print("Pressure Coefficient (Cp) Comparison")
-        print("="*50)
-        print(f"  Panel Max Cp : {np.max(Cp_panel):.4f}")
-        print(f"  Fluent Max Cp: {np.max(Cp_fluent):.4f}")
-        print(f"  RMS Error    : {np.sqrt(np.mean(Cp_diff**2)):.4f}")
+        if q_inf > 1e-14:
+            # Assuming Fluent pressure is gauge pressure and freestream P=0
+            Cp_fluent = interp_data["pressure_fluent"] / q_inf
+            Cp_diff = Cp_panel - Cp_fluent
+
+            mesh.cell_data["Cp_fluent"] = Cp_fluent
+            mesh.cell_data["Cp_difference"] = Cp_diff
+
+            print("\n" + "="*50)
+            print("Pressure Coefficient (Cp) Comparison")
+            print("="*50)
+            print(f"  Panel Max Cp : {np.max(Cp_panel):.4f}")
+            print(f"  Fluent Max Cp: {np.max(Cp_fluent):.4f}")
+            print(f"  RMS Error    : {np.sqrt(np.mean(Cp_diff**2)):.4f}")
+        else:
+            print("\nSkipping Cp comparison because freestream dynamic pressure is zero.")
 
     out_dir = case_dir / "out" / "panel_solver" / "comparison"
     out_dir.mkdir(parents=True, exist_ok=True)

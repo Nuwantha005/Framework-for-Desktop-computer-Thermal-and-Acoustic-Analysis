@@ -283,3 +283,12 @@
   - `src/solvers/actuator/coupling.py` — introduced `BoundaryRegionRuntime` to parse and build independent source meshes. Refactored the ADM loop to iterate `system_q`, apply $\pm 2Q/A$ source strengths to inlets/outlets, measure resulting internal velocity field, and compute the residual flow error against the system target.
   - `cases/cicular_vent/case.yaml` — Added an inlet disk at $z=-0.5$ and an outlet disk at $z=+0.5$ to perfectly seal the vent flow.
 - **Status**: Complete
+
+### Fix 3D Source Panel Sign Convention Bug
+- **What was done**: Investigated and fixed a spatial offset and unphysical velocity field bug in ParaView/VTK outputs for 3D cases (like `sphere_flow`). The 3D source influence matrix previously hardcoded `A[i,i] = -0.5`. This enforced the zero-normal-velocity boundary condition on the *interior* side of the panels (making the problem an internal flow rather than external potential flow), yielding correct interior flow (zero) but completely incorrect exterior flow. Changed to `A[i,i] = 0.5` to correctly enforce the external flow boundary condition.
+- **Files modified**:
+  - `src/solvers/panel3d/influences/source3d.py`
+- **Checks run**:
+  - Validated upstream velocity axis profile matches theoretical expectations (drops from freestream to 0 at stagnation point).
+  - Run `plot_cut_plane.py` and `demo_case_paraview_export.py` on `sphere_flow` with successful outputs.
+- **Status**: Complete

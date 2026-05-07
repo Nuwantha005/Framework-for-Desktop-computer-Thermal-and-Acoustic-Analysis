@@ -328,7 +328,7 @@ def compute_source_influence_matrix(
             panel_verts[3] = vertices[panels[j, 3]]
             
             if i == j:
-                A[i, j] = -0.5
+                A[i, j] = 0.5
             else:
                 point_local, panel_verts_local = _to_panel_local(point, panel_verts)
                 vel_local = compute_quad_source_velocity(point_local, panel_verts_local, 1.0)

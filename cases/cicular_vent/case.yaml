@@ -1,49 +1,92 @@
-name: "Circular Vent"
-case_type: "parametric_3d"
-description: "Circular vent shell (open cylinder)"
-
+name: Circular Vent
+case_type: parametric_3d
+description: Circular vent shell (open cylinder)
 freestream:
-  velocity: [0.0, 0.0, 0.0]
-
+  velocity:
+  - 0.0
+  - 0.0
+  - 0.0
 components:
-  - name: "vent_shell"
-    geometry:
-      type: "cylinder"
-      parameters:
-        radius: 0.06
-        length: 1.0
-        center: [0.0, 0.0, 0.0]
-        axis: "z"
-    mesh_levels:
-      - [24, 12] # n_theta, n_length
-      - [36, 18]
-      - [48, 24]
-
+- name: vent_shell
+  geometry:
+    type: thick_cylinder
+    parameters:
+      radius_inner: 0.06
+      radius_outer: 0.065
+      length: 1.0
+      center:
+      - 0.0
+      - 0.0
+      - 0.0
+      axis: z
+  mesh_levels:
+  - - 32
+    - 64
 solver:
-  singularity_type: "source"
-  panel_order: "constant"
-  panel_geometry: "flat"
-
+  singularity_type: source
+  panel_order: constant
+  panel_geometry: flat
 actuator_disks:
-  - name: "fan_120mm"
-    center: [0.0, 0.0, 0.0]
-    normal: [0.0, 0.0, 1.0]
-    radius: 0.06
-    n_r: 6
-    n_theta: 48
-    curve_file: "data/fan_curve.csv"
-    interpolation: "linear"
-    dp_initial: null
-    relaxation: 0.4
-    tolerance: 1.0e-3
-    max_iterations: 50
-
+- name: fan_120mm
+  center:
+  - 0.0
+  - 0.0
+  - 0.0
+  normal:
+  - 0.0
+  - 0.0
+  - 1.0
+  radius: 0.06
+  n_r: 6
+  n_theta: 48
+  curve_file: data/fan_curve.csv
+  interpolation: linear
+  dp_initial: null
+  relaxation: 0.4
+  tolerance: 0.001
+  max_iterations: 50
 visualization:
   domain:
-    x_range: [-0.5, 0.5]
-    y_range: [-0.5, 0.5]
-    z_range: [-0.8, 0.8]
-  resolution: [120, 120, 120]
-
+    x_range:
+    - -0.5
+    - 0.5
+    y_range:
+    - -0.5
+    - 0.5
+    z_range:
+    - -0.8
+    - 0.8
+  resolution:
+  - 120
+  - 120
+  - 120
 fluid:
   density: 1.225
+inlets:
+- name: main_inlet
+  shape: circle
+  center:
+  - 0.0
+  - 0.0
+  - -0.5
+  normal:
+  - 0.0
+  - 0.0
+  - -1.0
+  radius: 0.06
+  n_r: 6
+  n_theta: 48
+outlets:
+- name: main_outlet
+  shape: circle
+  center:
+  - 0.0
+  - 0.0
+  - 0.5
+  normal:
+  - 0.0
+  - 0.0
+  - 1.0
+  radius: 0.06
+  n_r: 6
+  n_theta: 48

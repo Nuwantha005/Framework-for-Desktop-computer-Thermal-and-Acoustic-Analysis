@@ -2,7 +2,7 @@
 **Last modified**: 2026-03-28 (Thermal BL solver integration)
 
 ## ADM Update
-- `solvers/actuator/` — simple actuator disk model for 3D panel coupling, using contiguous constant-strength doublet panels (vortex rings) to enforce pressure jumps without tip leakage.
+- `solvers/actuator/` — simple actuator disk model for 3D panel coupling, using contiguous constant-strength doublet panels (vortex rings) to enforce pressure jumps without tip leakage. Features `inlets` and `outlets` (source/sink meshes) that are automatically constrained to the system flow rate ($Q$) by the ADM loop, ensuring internal flow perfectly traverses from inlet to exhaust.
 - `ActuatorDiskCoupledSolver3D` wraps the configured 3D panel solver from
   `SolverFactory`; it is not hard-wired to `SourcePanelSolver3D`.
 - 3D solvers can support ADM by honoring

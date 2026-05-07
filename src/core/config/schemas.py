@@ -213,6 +213,19 @@ class ThermalConfig(BaseModel):
     )
 
 
+
+class BoundaryRegionConfig(BaseModel):
+    name: str = Field(..., description="Boundary region name")
+    shape: Literal["circle", "rectangle"] = Field(default="circle")
+    center: Tuple[float, float, float]
+    normal: Tuple[float, float, float]
+    radius: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    n_r: int = 6
+    n_theta: int = 24
+
+
 class ActuatorDiskConfig(BaseModel):
     """Configuration for one actuator disk / fan."""
     name: str = Field(..., description="Unique actuator disk identifier")
@@ -444,6 +457,17 @@ class SimulationConfig(BaseModel):
         default_factory=list,
         description="Actuator disk / fan definitions (optional)"
     )
+    
+    inlets: List[BoundaryRegionConfig] = Field(
+        default_factory=list,
+        description="Inlet boundary conditions (optional)"
+    )
+    
+    outlets: List[BoundaryRegionConfig] = Field(
+        default_factory=list,
+        description="Outlet boundary conditions (optional)"
+    )
+
     
     class Config:
         """Pydantic config."""

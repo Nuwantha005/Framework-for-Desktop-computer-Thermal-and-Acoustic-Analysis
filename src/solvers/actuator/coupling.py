@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from numpy.typing import NDArray
 
-from core.config.schemas import ActuatorDiskConfig, SolverConfig
+from core.config.schemas import ActuatorDiskConfig, SolverConfig, BoundaryRegionConfig
 from core.geometry.mesh3d import Mesh3D
 from solvers.factory import SolverFactory
 from solvers.panel3d.base import PanelSolver3D
@@ -22,12 +22,26 @@ from .doublet_influence import (
 )
 from .fan_curve import FanCurve
 from .models import ADMIterationRecord, ActuatorDiskResult, ActuatorDiskRuntime
+from solvers.panel3d.influences.source3d import compute_all_velocities_influence
 from .persistence import save_adm_solver_run
 from .plotting import plot_adm_convergence, plot_fan_curve_progression
 
 if TYPE_CHECKING:
     from core.io.case import Case
 
+
+
+class BoundaryRegionRuntime:
+    config: BoundaryRegionConfig
+    mesh: Mesh3D
+    source_strength: NDArray[np.float64]
+    area: float
+    
+    def __init__(self, config, mesh):
+        self.config = config
+        self.mesh = mesh
+        self.source_strength = np.zeros(mesh.num_panels, dtype=np.float64)
+        self.area = float(np.sum(mesh.areas))
 
 class ActuatorDiskCoupledSolver3D:
     """Couple configured 3D panel solvers with actuator disk pressure jumps."""
@@ -40,6 +54,8 @@ class ActuatorDiskCoupledSolver3D:
         disk_configs: list[ActuatorDiskConfig],
         case_dir: Path,
         solver_config: SolverConfig,
+        inlets: list[BoundaryRegionConfig] = None,
+        outlets: list[BoundaryRegionConfig] = None,
     ) -> None:
         """Initialize the coupled ADM solver."""
         if mesh.dimension != 3:
@@ -48,10 +64,15 @@ class ActuatorDiskCoupledSolver3D:
         self._v_inf = np.asarray(v_inf, dtype=np.float64)
         self._density = float(density)
         self._disk_configs = disk_configs
+        self._case_config_inlets = inlets or []
+        self._case_config_outlets = outlets or []
         self._case_dir = Path(case_dir)
         self._solver_config = solver_config
         self._body_solver: PanelSolver3D | None = None
         self._disks: list[ActuatorDiskRuntime] = []
+        self._inlets: list[BoundaryRegionRuntime] = []
+        self._outlets: list[BoundaryRegionRuntime] = []
+        self.system_q = 0.0
         self._history: list[ADMIterationRecord] = []
         self._results: list[ActuatorDiskResult] = []
         self._warnings: dict[str, str] = {}
@@ -67,6 +88,8 @@ class ActuatorDiskCoupledSolver3D:
             disk_configs=case.config.actuator_disks,
             case_dir=case.case_dir,
             solver_config=case.config.solver,
+            inlets=case.config.inlets,
+            outlets=case.config.outlets,
         )
 
     @property
@@ -122,66 +145,81 @@ class ActuatorDiskCoupledSolver3D:
             return
 
         self._disks = self._build_disks()
+        self._inlets = [self._build_boundary(cfg) for cfg in self._case_config_inlets]
+        self._outlets = [self._build_boundary(cfg) for cfg in self._case_config_outlets]
         converged = False
         max_iterations = max(disk.config.max_iterations for disk in self._disks)
 
         for iteration in range(1, max_iterations + 1):
+            for inlet in self._inlets:
+                if inlet.area > 0:
+                    inlet.source_strength = np.full(inlet.mesh.num_panels, 2.0 * self.system_q / inlet.area)
+            for outlet in self._outlets:
+                if outlet.area > 0:
+                    outlet.source_strength = np.full(outlet.mesh.num_panels, -2.0 * self.system_q / outlet.area)
+                    
+            for disk in self._disks:
+                dp_curve = disk.curve.pressure_at(self.system_q)
+                disk.pressure_rise = dp_curve
+                self._update_disk_doublet_strength(disk)
+
             disturbance = self._compute_body_normal_disturbance()
             self._body_solver = self._create_body_solver()
             self._body_solver.solve(normal_velocity_disturbance=disturbance)
 
             residuals = []
             bounds_reached = False
-            for disk in self._disks:
+            
+            measured_q = 0.0
+            if self._disks:
+                disk = self._disks[0]
                 disk_velocity = self._velocity_at_disk(disk)
                 disk.normal_velocity = compute_disk_normal_velocity(disk_velocity, disk.mesh)
-                disk.flow_rate = integrate_flow_rate(disk.normal_velocity, disk.mesh)
-
-                if not disk.curve.contains_flow_rate(disk.flow_rate):
+                measured_q = integrate_flow_rate(disk.normal_velocity, disk.mesh)
+                disk.flow_rate = measured_q
+                
+                if not disk.curve.contains_flow_rate(self.system_q):
                     bounds_reached = True
                     warning = (
-                        f"Fan '{disk.config.name}' flow rate {disk.flow_rate:.6e} m^3/s "
+                        f"Fan '{disk.config.name}' flow rate {self.system_q:.6e} m^3/s "
                         f"left fan-curve range [{disk.curve.q_min:.6e}, "
                         f"{disk.curve.q_max:.6e}] m^3/s; stopping ADM iteration."
                     )
                     self._warnings[disk.config.name] = warning
                     print(f"[ADM WARNING] {warning}")
-
-                dp_curve = disk.curve.pressure_at(disk.flow_rate)
-                residual = dp_curve - disk.pressure_rise
+                    
+                dp_curve = disk.curve.pressure_at(self.system_q)
+                residual = measured_q - self.system_q
                 residuals.append(abs(residual))
                 self._history.append(
                     ADMIterationRecord(
                         iteration=iteration,
                         disk_name=disk.config.name,
-                        flow_rate=disk.flow_rate,
-                        pressure_rise=disk.pressure_rise,
+                        flow_rate=measured_q,
+                        pressure_rise=dp_curve,
                         pressure_rise_curve=dp_curve,
                         pressure_residual=residual,
                     )
                 )
                 print(
                     f"[ADM] iter={iteration:03d} fan={disk.config.name} "
-                    f"Q={disk.flow_rate:.6e} m^3/s dp={disk.pressure_rise:.6e} Pa "
-                    f"dp_curve={dp_curve:.6e} Pa residual={residual:.6e} Pa"
+                    f"Q_sys={self.system_q:.6e} m^3/s Q_meas={measured_q:.6e} m^3/s "
+                    f"dp={dp_curve:.6e} Pa residual={residual:.6e} m^3/s"
                 )
 
                 if not bounds_reached and iteration < disk.config.max_iterations:
-                    disk.pressure_rise += disk.config.relaxation * residual
-                    self._update_disk_doublet_strength(disk)
+                    self.system_q += disk.config.relaxation * residual
 
             if bounds_reached:
                 break
 
             active_residuals = [
                 residual
-                for residual, disk in zip(residuals, self._disks)
-                if iteration <= disk.config.max_iterations
+                for residual in residuals
+                if iteration <= self._disks[0].config.max_iterations
             ]
-            if active_residuals and all(
-                residual <= disk.config.tolerance
-                for residual, disk in zip(residuals, self._disks)
-            ):
+            
+            if active_residuals and all(residual <= 1e-5 for residual in active_residuals):
                 converged = True
                 break
 
@@ -208,6 +246,10 @@ class ActuatorDiskCoupledSolver3D:
         velocity = self.body_solver.velocity_at(points)
         for disk in self._disks:
             velocity += compute_point_doublet_velocity(points, disk.mesh, disk.doublet_strength)
+        for inlet in self._inlets:
+            velocity += compute_all_velocities_influence(points, inlet.mesh.nodes, inlet.mesh.panels, inlet.source_strength)
+        for outlet in self._outlets:
+            velocity += compute_all_velocities_influence(points, outlet.mesh.nodes, outlet.mesh.panels, outlet.source_strength)
         return velocity
 
     def _create_body_solver(self) -> PanelSolver3D:
@@ -217,6 +259,21 @@ class ActuatorDiskCoupledSolver3D:
             v_inf=self._v_inf,
             aoa=0.0,
         )
+
+    def _build_boundary(self, config: BoundaryRegionConfig) -> BoundaryRegionRuntime:
+        normal = np.asarray(config.normal, dtype=np.float64)
+        normal = normal / np.linalg.norm(normal)
+        if config.shape == "circle":
+            mesh = generate_actuator_disk_mesh(
+                center=config.center,
+                normal=normal,
+                radius=config.radius,
+                n_r=config.n_r,
+                n_theta=config.n_theta,
+            )
+        else:
+            raise NotImplementedError("Only circle boundaries currently supported")
+        return BoundaryRegionRuntime(config, mesh)
 
     def _build_disks(self) -> list[ActuatorDiskRuntime]:
         disks = []
@@ -272,6 +329,14 @@ class ActuatorDiskCoupledSolver3D:
                 disk.mesh,
                 disk.doublet_strength,
             )
+        for inlet in self._inlets:
+            disturbance_velocity += compute_all_velocities_influence(
+                self._mesh.centers, inlet.mesh.nodes, inlet.mesh.panels, inlet.source_strength
+            )
+        for outlet in self._outlets:
+            disturbance_velocity += compute_all_velocities_influence(
+                self._mesh.centers, outlet.mesh.nodes, outlet.mesh.panels, outlet.source_strength
+            )
         return np.einsum("ij,ij->i", disturbance_velocity, self._mesh.normals)
 
     def _velocity_at_disk(self, disk: ActuatorDiskRuntime) -> NDArray[np.float64]:
@@ -292,6 +357,12 @@ class ActuatorDiskCoupledSolver3D:
                 other.mesh,
                 other.doublet_strength,
             )
+        for inlet in self._inlets:
+            velocity_plus += compute_all_velocities_influence(plus_points, inlet.mesh.nodes, inlet.mesh.panels, inlet.source_strength)
+            velocity_minus += compute_all_velocities_influence(minus_points, inlet.mesh.nodes, inlet.mesh.panels, inlet.source_strength)
+        for outlet in self._outlets:
+            velocity_plus += compute_all_velocities_influence(plus_points, outlet.mesh.nodes, outlet.mesh.panels, outlet.source_strength)
+            velocity_minus += compute_all_velocities_influence(minus_points, outlet.mesh.nodes, outlet.mesh.panels, outlet.source_strength)
         return 0.5 * (velocity_plus + velocity_minus)
 
     def _write_outputs(self) -> None:

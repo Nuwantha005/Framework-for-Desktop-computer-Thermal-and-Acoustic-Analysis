@@ -164,6 +164,131 @@ def generate_cylinder(
     )
 
 
+
+def generate_thick_cylinder(
+    n_theta: int = 32,
+    n_length: int = 16,
+    radius_inner: float = 0.95,
+    radius_outer: float = 1.0,
+    length: float = 2.0,
+    center: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    axis: str = "z",
+) -> Mesh3D:
+    """
+    Generate a thick cylinder (pipe) mesh with quadrilateral panels.
+
+    The cylinder has an inner wall, an outer wall, and is capped at both ends
+    to form a closed solid volume.
+
+    Args:
+        n_theta: Number of divisions around circumference
+        n_length: Number of divisions along cylinder axis
+        radius_inner: Inner radius
+        radius_outer: Outer radius
+        length: Cylinder length
+        center: Center coordinates (x, y, z)
+        axis: Axis of alignment ('x', 'y', or 'z')
+
+    Returns:
+        Mesh3D with quad panels
+    """
+    if n_theta < 3:
+        raise ValueError("n_theta must be >= 3")
+    if n_length < 1:
+        raise ValueError("n_length must be >= 1")
+    if radius_inner >= radius_outer:
+        raise ValueError("radius_outer must be greater than radius_inner")
+    
+    axis = axis.lower()
+    if axis not in {"x", "y", "z"}:
+        raise ValueError(f"Unsupported axis '{axis}'. Use 'x', 'y', or 'z'.")
+
+    cx, cy, cz = center
+    
+    theta = np.linspace(0, 2*np.pi, n_theta, endpoint=False)
+    z = np.linspace(-length/2, length/2, n_length + 1)
+    
+    nodes = []
+    
+    # Helper to create points depending on axis
+    def make_pt(r, t, zi):
+        X, Y, Z = r*np.cos(t), r*np.sin(t), zi
+        if axis == "z":
+            return [cx + X, cy + Y, cz + Z]
+        elif axis == "x":
+            return [cx + Z, cy + X, cz + Y]
+        else: # y
+            return [cx + X, cy + Z, cz + Y]
+            
+    # Generate all inner nodes
+    for zi in z:
+        for t in theta:
+            nodes.append(make_pt(radius_inner, t, zi))
+    inner_offset = 0
+    
+    # Generate all outer nodes
+    for zi in z:
+        for t in theta:
+            nodes.append(make_pt(radius_outer, t, zi))
+    outer_offset = len(z) * n_theta
+    
+    nodes = np.array(nodes, dtype=np.float64)
+    panels = []
+    
+    # Inner wall panels (normals point inward towards r=0)
+    for i in range(n_length):
+        for j in range(n_theta):
+            n00 = inner_offset + i * n_theta + j
+            n10 = inner_offset + i * n_theta + (j + 1) % n_theta
+            n01 = inner_offset + (i + 1) * n_theta + j
+            n11 = inner_offset + (i + 1) * n_theta + (j + 1) % n_theta
+            
+            # To face INWARD, viewing from origin, CCW: n00 -> n10 -> n11 -> n01
+            panels.append([n00, n10, n11, n01])
+            
+    # Outer wall panels (normals point outward)
+    for i in range(n_length):
+        for j in range(n_theta):
+            n00 = outer_offset + i * n_theta + j
+            n10 = outer_offset + i * n_theta + (j + 1) % n_theta
+            n01 = outer_offset + (i + 1) * n_theta + j
+            n11 = outer_offset + (i + 1) * n_theta + (j + 1) % n_theta
+            
+            # To face OUTWARD, viewing from outside, CCW: n00 -> n01 -> n11 -> n10
+            panels.append([n00, n01, n11, n10])
+            
+    # Bottom lip (z = -length/2) (normals point -z)
+    for j in range(n_theta):
+        in_0 = inner_offset + j
+        in_1 = inner_offset + (j + 1) % n_theta
+        out_0 = outer_offset + j
+        out_1 = outer_offset + (j + 1) % n_theta
+        
+        # To face -z, viewing from bottom, CCW: in_0 -> out_0 -> out_1 -> in_1
+        panels.append([in_0, out_0, out_1, in_1])
+        
+    # Top lip (z = length/2) (normals point +z)
+    inner_top = inner_offset + n_length * n_theta
+    outer_top = outer_offset + n_length * n_theta
+    for j in range(n_theta):
+        in_0 = inner_top + j
+        in_1 = inner_top + (j + 1) % n_theta
+        out_0 = outer_top + j
+        out_1 = outer_top + (j + 1) % n_theta
+        
+        # To face +z, viewing from top, CCW: in_0 -> in_1 -> out_1 -> out_0
+        panels.append([in_0, in_1, out_1, out_0])
+        
+    panels = np.array(panels, dtype=np.int32)
+    component_ids = np.zeros(len(panels), dtype=np.int32)
+    
+    return Mesh3D(
+        nodes=nodes,
+        panels=panels,
+        component_ids=component_ids
+    )
+
+
 def generate_box(
     nx: int = 4,
     ny: int = 4,

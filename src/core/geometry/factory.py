@@ -34,6 +34,7 @@ class GeometryFactory:
         "rounded_rectangle": generators.generate_rounded_rectangle,
         "sphere": sphere_generator.generate_sphere,
         "cylinder": sphere_generator.generate_cylinder,
+        "thick_cylinder": sphere_generator.generate_thick_cylinder,
     }
     
     @classmethod

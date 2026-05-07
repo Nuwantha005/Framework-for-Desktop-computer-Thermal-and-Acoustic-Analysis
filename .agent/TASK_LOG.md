@@ -266,3 +266,20 @@
   - `python demos/demo_actuator_disk.py --case cases/cicular_vent --mesh-level -1` — ADM correctly yields positive flow rate and converges successfully in 13 iterations.
   - `pytest src/test -q` — 23 passed.
 - **Status**: Complete
+
+### Fixed Thin-Shell Duct Transparency
+- **What was done**: The previous open-cylinder geometry was mathematically a "thin shell". In a source panel method, thin source sheets cannot sustain a pressure difference and act transparently to cross-flow. The doublet's dipole field was simply passing through the duct walls, creating a local unconfined recirculation zone (the "magnetic field" effect).
+- **Solution**: Upgraded the duct geometry generator to create a **Thick Cylinder** (inner wall, outer wall, and end lips). By giving the duct finite thickness, it forms a completely closed 3D body. The source panel method perfectly enforces the solid boundary, forcing the doublet's momentum entirely through the internal pipe and preventing radial tip-leakage.
+- **Files modified**:
+  - `src/core/geometry/io/sphere_generator.py` — added `generate_thick_cylinder()`
+  - `src/core/geometry/factory.py` — registered `"thick_cylinder"` geometry
+  - `cases/cicular_vent/case.yaml` — updated to use `thick_cylinder` with `radius_inner=0.06` and `radius_outer=0.065`.
+- **Status**: Complete
+
+### ADM Inlet and Outlet Boundaries
+- **What was done**: Re-architected the system to strictly enforce internal pipe flow and completely prevent "magnetic-field" tip leakage through boundary kinematics. Added `inlets` and `outlets` to the configuration schema as independent geometric source/sink disks. The ADM iteration loop was upgraded to iterate the *System Flow Rate* ($Q_{sys}$). At each iteration, $Q_{sys}$ is prescribed to the inlet sources and outlet sinks, guaranteeing mass perfectly enters and exits the duct. The internal doublet continues to add the correct fan $\Delta P$ pressure jump. By letting the sources and sinks define the kinematics, the internal flow is perfectly channeled and cannot loop around the exterior of the pipe.
+- **Files modified**:
+  - `src/core/config/schemas.py` — added `BoundaryRegionConfig`, appended `inlets` and `outlets` to `SimulationConfig`.
+  - `src/solvers/actuator/coupling.py` — introduced `BoundaryRegionRuntime` to parse and build independent source meshes. Refactored the ADM loop to iterate `system_q`, apply $\pm 2Q/A$ source strengths to inlets/outlets, measure resulting internal velocity field, and compute the residual flow error against the system target.
+  - `cases/cicular_vent/case.yaml` — Added an inlet disk at $z=-0.5$ and an outlet disk at $z=+0.5$ to perfectly seal the vent flow.
+- **Status**: Complete

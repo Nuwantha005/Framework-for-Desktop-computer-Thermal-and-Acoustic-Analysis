@@ -57,36 +57,8 @@ visualization:
     - -0.8
     - 0.8
   resolution:
-  - 120
-  - 120
-  - 120
+  - 60
+  - 60
+  - 60
 fluid:
   density: 1.225
-inlets:
-- name: main_inlet
-  shape: circle
-  center:
-  - 0.0
-  - 0.0
-  - -0.5
-  normal:
-  - 0.0
-  - 0.0
-  - -1.0
-  radius: 0.06
-  n_r: 6
-  n_theta: 48
-outlets:
-- name: main_outlet
-  shape: circle
-  center:
-  - 0.0
-  - 0.0
-  - 0.5
-  normal:
-  - 0.0
-  - 0.0
-  - 1.0
-  radius: 0.06
-  n_r: 6
-  n_theta: 48

@@ -58,6 +58,7 @@ Define a structured list of fans. Example fields to include:
   - Generate the same cut plane in panel+ADM.
   - Load Fluent cut‑plane export (CSV with x,y,z,p,u,v,w).
   - Interpolate Fluent values onto the panel cut grid.
+  - fluent and our solver should be plotted side by side (up and down). the visualization domain is in the case yaml file.
   - Plot **pressure/velocity along duct axis** on a single plot (Fluent vs panel+ADM).
   - Validation plots and exports should be saved to `out/validation` folder, and when needed, plots / data should be saved on sub folders for better clarity.  
 

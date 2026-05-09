@@ -47,7 +47,10 @@ def _surface_export(case_dir: Path, mesh, solver, config, surface_path: Path) ->
     p_ref = float(config.fluid.reference_pressure)
     v_inf = float(np.linalg.norm(config.get_freestream_velocity()))
     q_inf = 0.5 * rho * v_inf * v_inf
-    p_surface = p_ref + q_inf * cp
+    if hasattr(solver, "pressure_at"):
+        p_surface = np.asarray(solver.pressure_at(mesh.centers), dtype=np.float64)
+    else:
+        p_surface = p_ref + q_inf * cp
 
     mesh.cell_data["Vt"] = vt
     mesh.cell_data["Cp"] = cp
@@ -107,11 +110,21 @@ def _volume_export(
     v_inf = float(np.linalg.norm(config.get_freestream_velocity()))
     q_inf = 0.5 * rho * v_inf * v_inf
 
+    if hasattr(solver, "pressure_at"):
+        pressure = np.full(points.shape[0], np.nan, dtype=np.float64)
+        pressure[exterior_mask] = np.asarray(solver.pressure_at(exterior_points), dtype=np.float64)
+    else:
+        pressure = np.full(points.shape[0], np.nan, dtype=np.float64)
+
     if v_inf > 1e-14:
         cp = 1.0 - (speed / v_inf) ** 2
     else:
         cp = np.full_like(speed, np.nan, dtype=np.float64)
-    pressure = p_ref + q_inf * cp
+        if not hasattr(solver, "pressure_at"):
+            pressure = np.full_like(speed, np.nan, dtype=np.float64)
+
+    if not hasattr(solver, "pressure_at"):
+        pressure = p_ref + q_inf * cp
 
     grid.point_data["velocity"] = vel
     grid.point_data["velocity_magnitude"] = speed

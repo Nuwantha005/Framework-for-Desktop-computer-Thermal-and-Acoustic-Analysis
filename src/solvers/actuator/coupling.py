@@ -51,6 +51,7 @@ class ActuatorDiskCoupledSolver3D:
         mesh: Mesh3D,
         v_inf: NDArray[np.float64],
         density: float,
+        reference_pressure: float,
         disk_configs: list[ActuatorDiskConfig],
         case_dir: Path,
         solver_config: SolverConfig,
@@ -63,6 +64,7 @@ class ActuatorDiskCoupledSolver3D:
         self._mesh = mesh
         self._v_inf = np.asarray(v_inf, dtype=np.float64)
         self._density = float(density)
+        self._reference_pressure = float(reference_pressure)
         self._disk_configs = disk_configs
         self._case_config_inlets = inlets or []
         self._case_config_outlets = outlets or []
@@ -85,6 +87,7 @@ class ActuatorDiskCoupledSolver3D:
             mesh=case.mesh,
             v_inf=case.freestream,
             density=case.density,
+            reference_pressure=case.reference_pressure,
             disk_configs=case.config.actuator_disks,
             case_dir=case.case_dir,
             solver_config=case.config.solver,
@@ -135,6 +138,11 @@ class ActuatorDiskCoupledSolver3D:
     def sigma(self) -> NDArray[np.float64]:
         """Body source strengths when available."""
         return self.body_solver.sigma
+
+    @property
+    def reference_pressure(self) -> float:
+        """Reference static pressure used for Bernoulli reconstruction."""
+        return self._reference_pressure
 
     def solve(self) -> None:
         """Run the P-Q actuator disk coupling loop."""
@@ -252,6 +260,27 @@ class ActuatorDiskCoupledSolver3D:
             velocity += compute_all_velocities_influence(points, outlet.mesh.nodes, outlet.mesh.panels, outlet.source_strength)
         return velocity
 
+    def pressure_at(self, points: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Compute static pressure at arbitrary points.
+
+        The reconstruction uses Bernoulli within each region and adds the
+        prescribed actuator-disk pressure jumps on the downstream side of each
+        disk. Points exactly on a disk receive half the jump so line/cut-plane
+        samples remain well-behaved.
+        """
+        if not self._solved:
+            raise RuntimeError("Solver not executed. Call solve() first.")
+        points = np.asarray(points, dtype=np.float64)
+        if points.ndim == 1:
+            points = points.reshape(1, -1)
+        velocity = self.velocity_at(points)
+        velocity = self._regularize_disk_plane_velocity(points, velocity)
+        return self._pressure_from_velocity(points, velocity)
+
+    def pressure_gauge_at(self, points: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Compute gauge pressure at arbitrary points."""
+        return self.pressure_at(points) - self._reference_pressure
+
     def _create_body_solver(self) -> PanelSolver3D:
         return SolverFactory.create(
             config=self._solver_config,
@@ -338,6 +367,74 @@ class ActuatorDiskCoupledSolver3D:
                 self._mesh.centers, outlet.mesh.nodes, outlet.mesh.panels, outlet.source_strength
             )
         return np.einsum("ij,ij->i", disturbance_velocity, self._mesh.normals)
+
+    def _pressure_from_velocity(
+        self,
+        points: NDArray[np.float64],
+        velocity: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        """Reconstruct static pressure from velocity and disk pressure jumps."""
+        velocity = np.asarray(velocity, dtype=np.float64)
+        speed_sq = np.einsum("ij,ij->i", velocity, velocity)
+        total_pressure = (
+            self._reference_pressure
+            + 0.5 * self._density * float(np.dot(self._v_inf, self._v_inf))
+            + self._pressure_jump_offsets(points)
+        )
+        return total_pressure - 0.5 * self._density * speed_sq
+
+    def _pressure_jump_offsets(self, points: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Return cumulative static-pressure offsets from actuator disks."""
+        points = np.asarray(points, dtype=np.float64)
+        offsets = np.zeros(points.shape[0], dtype=np.float64)
+        for disk in self._disks:
+            signed_distance, radial_distance, tolerance = self._disk_local_coordinates(points, disk)
+            multiplier = np.where(
+                signed_distance > tolerance,
+                1.0,
+                np.where(signed_distance < -tolerance, 0.0, 0.5),
+            )
+            active = radial_distance <= float(disk.config.radius) + tolerance
+            multiplier = np.where(active, multiplier, 0.0)
+            offsets += multiplier * float(disk.pressure_rise)
+        return offsets
+
+    def _regularize_disk_plane_velocity(
+        self,
+        points: NDArray[np.float64],
+        velocity: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        """Replace on-disk-plane velocities with side-averaged samples."""
+        corrected = np.asarray(velocity, dtype=np.float64).copy()
+        for disk in self._disks:
+            signed_distance, radial_distance, tolerance = self._disk_local_coordinates(points, disk)
+            on_plane = (
+                (np.abs(signed_distance) <= tolerance)
+                & (radial_distance <= float(disk.config.radius) + tolerance)
+            )
+            if not np.any(on_plane):
+                continue
+            sample_offset = max(1e-6, 0.5 * float(np.sqrt(np.mean(disk.mesh.areas))))
+            plus_points = points[on_plane] + sample_offset * disk.normal
+            minus_points = points[on_plane] - sample_offset * disk.normal
+            corrected[on_plane] = 0.5 * (
+                self.velocity_at(plus_points) + self.velocity_at(minus_points)
+            )
+        return corrected
+
+    def _disk_local_coordinates(
+        self,
+        points: NDArray[np.float64],
+        disk: ActuatorDiskRuntime,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], float]:
+        """Return signed plane distance, radial distance, and tolerance."""
+        center = np.asarray(disk.config.center, dtype=np.float64)
+        relative = np.asarray(points, dtype=np.float64) - center
+        signed_distance = np.einsum("ij,j->i", relative, disk.normal)
+        in_plane = relative - np.outer(signed_distance, disk.normal)
+        radial_distance = np.linalg.norm(in_plane, axis=1)
+        tolerance = max(1e-10, 1e-8 * float(disk.config.radius))
+        return signed_distance, radial_distance, tolerance
 
     def _velocity_at_disk(self, disk: ActuatorDiskRuntime) -> NDArray[np.float64]:
         offset = disk.sample_offset * disk.normal

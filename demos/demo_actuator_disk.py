@@ -32,6 +32,10 @@ def _surface_export(case_dir: Path, solver) -> Path:
     mesh.cell_data["velocity_magnitude"] = np.linalg.norm(velocity, axis=1)
     if hasattr(solver, "Cp"):
         mesh.cell_data["Cp"] = np.asarray(solver.Cp, dtype=np.float64)
+    if hasattr(solver, "pressure_at"):
+        pressure = np.asarray(solver.pressure_at(mesh.centers), dtype=np.float64)
+        mesh.cell_data["pressure"] = pressure
+        mesh.cell_data["pressure_gauge"] = pressure - float(solver.reference_pressure)
 
     export_solution_vtk(mesh, surface_path)
     return surface_path

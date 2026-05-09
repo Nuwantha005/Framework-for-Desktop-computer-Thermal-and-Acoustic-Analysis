@@ -86,6 +86,45 @@ def test_case_with_actuator_disks_uses_coupled_solver():
     assert isinstance(solver, ActuatorDiskCoupledSolver3D)
 
 
+def test_pressure_reconstruction_uses_disk_pressure_jump():
+    case = CaseLoader.load_case("cases/cicular_vent", mesh_level_index=0)
+    solver = case.create_solver()
+
+    assert isinstance(solver, ActuatorDiskCoupledSolver3D)
+    solver._disks = solver._build_disks()
+
+    disk = solver._disks[0]
+    disk.pressure_rise = 20.0
+
+    points = np.array(
+        [
+            [0.0, 0.0, -0.1],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.1],
+            [0.2, 0.0, 0.1],
+        ],
+        dtype=np.float64,
+    )
+    velocity = np.tile(np.array([0.0, 0.0, 2.0], dtype=np.float64), (4, 1))
+
+    pressure = solver._pressure_from_velocity(points, velocity)
+    dynamic = 0.5 * case.density * 2.0**2
+
+    np.testing.assert_allclose(
+        pressure,
+        np.array(
+            [
+                case.reference_pressure - dynamic,
+                case.reference_pressure - dynamic + 10.0,
+                case.reference_pressure - dynamic + 20.0,
+                case.reference_pressure - dynamic,
+            ],
+            dtype=np.float64,
+        ),
+        atol=1e-10,
+    )
+
+
 if __name__ == "__main__":
     print(
         "This file contains pytest tests. Run them with:\n"

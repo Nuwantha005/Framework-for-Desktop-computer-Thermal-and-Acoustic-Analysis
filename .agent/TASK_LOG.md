@@ -292,3 +292,23 @@
   - Validated upstream velocity axis profile matches theoretical expectations (drops from freestream to 0 at stagnation point).
   - Run `plot_cut_plane.py` and `demo_case_paraview_export.py` on `sphere_flow` with successful outputs.
 - **Status**: Complete
+
+## 2026-05-09
+### ADM Pressure Reconstruction and Gauge-Pressure Validation
+- **What was done**: Added direct pressure reconstruction to the ADM coupled solver for arbitrary field points. The solver now reconstructs static pressure from Bernoulli plus actuator-disk pressure-jump offsets, with half-jump treatment on the disk plane and gauge-pressure access for Fluent comparison. Updated 3D ParaView export and ADM validation helpers to use this path.
+- **Files modified**:
+  - `src/solvers/actuator/coupling.py`
+  - `demos/demo_case_paraview_export.py`
+  - `demos/demo_actuator_disk.py`
+  - `validation/scripts/3d/adm/common.py`
+  - `src/test/test_actuator_disk.py`
+- **Checks run**:
+  - `/home/nuwa/miniforge3/envs/fyp/bin/python -m py_compile src/solvers/actuator/coupling.py demos/demo_case_paraview_export.py demos/demo_actuator_disk.py validation/scripts/3d/adm/common.py src/test/test_actuator_disk.py`
+  - `env MPLCONFIGDIR=/tmp/matplotlib-codex /home/nuwa/miniforge3/envs/fyp/bin/python -m pytest src/test/test_actuator_disk.py -q` — 6 passed
+  - `env MPLCONFIGDIR=/tmp/matplotlib-codex /home/nuwa/miniforge3/envs/fyp/bin/python validation/scripts/3d/adm/compare_axis_line.py cases/cicular_vent --quantities pressure`
+  - `env MPLCONFIGDIR=/tmp/matplotlib-codex /home/nuwa/miniforge3/envs/fyp/bin/python validation/scripts/3d/adm/compare_cut_plane.py cases/cicular_vent --quantities pressure`
+  - `env MPLCONFIGDIR=/tmp/matplotlib-codex /home/nuwa/miniforge3/envs/fyp/bin/python demos/demo_case_paraview_export.py cases/cicular_vent --mesh-level 0 --resolution 60 60 60 --output-dir cases/cicular_vent/out/panel_solver_pressure_tmp`
+  - `env MPLCONFIGDIR=/tmp/matplotlib-codex /home/nuwa/miniforge3/envs/fyp/bin/python validation/scripts/3d/adm/compare_cut_plane.py cases/cicular_vent --quantities pressure --volume-field cases/cicular_vent/out/panel_solver_pressure_tmp/volume_fields.vts --output-dir cases/cicular_vent/out/validation/adm/cut_plane_pressure_tmp`
+  - `env MPLCONFIGDIR=/tmp/matplotlib-codex /home/nuwa/miniforge3/envs/fyp/bin/python validation/scripts/3d/adm/compare_axis_line.py cases/cicular_vent --quantities pressure --volume-field cases/cicular_vent/out/panel_solver_pressure_tmp/volume_fields.vts --output-dir cases/cicular_vent/out/validation/adm/axis_line_pressure_tmp`
+- **Notes**:
+  - Old `out/panel_solver/volume_fields.vts` files generated before this change still carry invalid pressure for zero-freestream ADM cases; rerun the export script once to refresh them.

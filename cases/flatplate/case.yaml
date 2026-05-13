@@ -8,7 +8,7 @@ components:
   - name: "body"
     geometry:
       type: "external"
-      file: "shapes/body.unv"
+      file: "shapes/body.med"
     transform:
       translation: [0.0, 0.0, 0.0]
       rotation_xyz_deg: [0.0, 0.0, 0.0]

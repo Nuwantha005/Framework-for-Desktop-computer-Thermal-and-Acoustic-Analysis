@@ -71,9 +71,15 @@ class CaseLoader:
                 if comp_config.geometry.type == "external":
                     if comp_config.geometry.file is None:
                         raise ValueError(f"Component '{comp_config.name}': external geometry requires a 'file' parameter")
-                    from ..geometry.io.stl_reader import read_mesh
-                    geom_path = base_path / comp_config.geometry.file
-                    local_mesh = read_mesh(geom_path)
+                    if comp_config.geometry.file.lower().endswith((".step", ".stl")):
+                        from ..geometry.io.gmsh_reader import read_with_gmsh
+                        geom_path = base_path / comp_config.geometry.file
+                        scale = comp_config.geometry.parameters.get("scale", 1.0)
+                        local_mesh = read_with_gmsh(geom_path, scale=scale)
+                    else:
+                        from ..geometry.io.stl_reader import read_mesh
+                        geom_path = base_path / comp_config.geometry.file
+                        local_mesh = read_mesh(geom_path)
                 else:
                     # Parametric geometry - get resolution from component's mesh_levels
                     if comp_config.mesh_levels is None or len(comp_config.mesh_levels) == 0:
@@ -102,7 +108,7 @@ class CaseLoader:
                     local_mesh = GeometryFactory.create(geom_def, resolution)
             else:
                 # Legacy file-based geometry
-                if comp_config.geometry_file is None:
+                if comp_config.geometry.file is None:
                     raise ValueError(f"Component '{comp_config.name}': must specify geometry or geometry_file")
                 geom_path = base_path / comp_config.geometry_file
                 local_mesh = GeometryReader.read(geom_path)

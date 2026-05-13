@@ -37,6 +37,8 @@ class ActuatorDiskRuntime:
     doublet_strength: NDArray[np.float64]
     reference_velocity: float
     normal_velocity: NDArray[np.float64] = field(default_factory=lambda: np.zeros(0))
+    system_q: float = 0.0
+    flow_rate: float = 0.0
     flow_rate: float = 0.0
     sample_offset: float = 0.0
 

@@ -1,0 +1,89 @@
+name: PC Casing 3D
+case_type: parametric_3d
+description: PC casing flow with actuator disks
+freestream:
+  velocity:
+    - 0.0
+    - 0.0
+    - 0.0
+
+components:
+  - name: casing
+    geometry:
+      type: external
+      file: shapes/casing.STEP
+      parameters:
+        scale: 0.001
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation_xyz_deg: [0.0, 0.0, 0.0]
+    boundary_condition:
+      type: wall
+
+solver:
+  singularity_type: source
+  panel_order: constant
+  panel_geometry: flat
+
+actuator_disks:
+  - name: cpu_fan_92mm
+    center: [0.150, 0.075, -0.200]
+    normal: [0.0, -1.0, 0.0]
+    radius: 0.046
+    n_r: 6
+    n_theta: 48
+    curve_file: data/fan_curve1.csv
+    interpolation: linear
+    dp_initial: null
+    relaxation: 0.4
+    tolerance: 0.001
+    max_iterations: 50
+  - name: intake_fan_120mm
+    center: [0.100, 0.180, -0.080]
+    normal: [0.0, -1.0, 0.0]
+    radius: 0.060
+    n_r: 6
+    n_theta: 48
+    curve_file: data/fan_curve2.csv
+    interpolation: linear
+    dp_initial: null
+    relaxation: 0.4
+    tolerance: 0.001
+    max_iterations: 50
+
+visualization:
+  domain:
+    x_range: [-0.05, 0.45]
+    y_range: [-0.05, 0.25]
+    z_range: [-0.40, 0.05]
+  resolution: [100, 100, 100]
+
+fluid:
+  density: 1.225
+
+inlets:
+  - name: inlet_circle
+    shape: circle
+    center: [0.150, 0.186, -0.200]
+    normal: [0.0, -1.0, 0.0]
+    radius: 0.0431
+    n_r: 6
+    n_theta: 24
+  - name: inlet_square
+    shape: rectangle
+    center: [0.100, 0.186, -0.080]
+    normal: [0.0, -1.0, 0.0]
+    width: 0.120
+    height: 0.120
+    n_r: 6
+    n_theta: 24
+
+outlets:
+  - name: exhaust
+    shape: rectangle
+    center: [0.0, 0.1135, -0.130]
+    normal: [-1.0, 0.0, 0.0]
+    width: 0.085
+    height: 0.130
+    n_r: 6
+    n_theta: 24

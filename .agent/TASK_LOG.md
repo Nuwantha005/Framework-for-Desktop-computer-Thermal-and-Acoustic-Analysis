@@ -312,3 +312,17 @@
   - `env MPLCONFIGDIR=/tmp/matplotlib-codex /home/nuwa/miniforge3/envs/fyp/bin/python validation/scripts/3d/adm/compare_axis_line.py cases/cicular_vent --quantities pressure --volume-field cases/cicular_vent/out/panel_solver_pressure_tmp/volume_fields.vts --output-dir cases/cicular_vent/out/validation/adm/axis_line_pressure_tmp`
 - **Notes**:
   - Old `out/panel_solver/volume_fields.vts` files generated before this change still carry invalid pressure for zero-freestream ADM cases; rerun the export script once to refresh them.
+
+## 2026-05-14
+### Multi-Fan ADM and STEP Geometry Import (PC Casing)
+- **What was done**: Extended the 3D I/O pipeline to import raw CAD files (.step/.stl) directly using the `gmsh` API and generate quad surface meshes on the fly. Upgraded the Actuator Disk Model (ADM) coupling to correctly support multiple fans iterating their operating points independently and added a rectangular boundary mesh generator to support square fans, inlets, and exhausts. Applied these capabilities to solve flow inside a PC Casing with a 92mm CPU fan and a 120mm Intake fan.
+- **Files created**:
+  - `src/core/geometry/io/gmsh_reader.py` — Gmsh-based CAD importer.
+  - `cases/pc_casing/case.yaml` — PC casing case definition.
+- **Files modified**:
+  - `src/core/io/case_loader.py` — added hook for `.step` and `.stl` files.
+  - `src/solvers/actuator/disk_mesh.py` — added `generate_rectangular_boundary_mesh`.
+  - `src/solvers/actuator/coupling.py` — allowed rectangular inlets/outlets and fixed multi-fan independent `system_q` loops.
+- **Checks run**:
+  - `python demos/demo_actuator_disk.py --case cases/pc_casing` completed, showing independent iterative convergence for both fans (CPU fan @ ~6.3e-3 m^3/s, Intake fan @ ~1.4e-2 m^3/s).
+- **Status**: Complete

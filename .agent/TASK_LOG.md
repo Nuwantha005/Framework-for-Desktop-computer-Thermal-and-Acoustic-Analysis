@@ -326,3 +326,27 @@
 - **Checks run**:
   - `python demos/demo_actuator_disk.py --case cases/pc_casing` completed, showing independent iterative convergence for both fans (CPU fan @ ~6.3e-3 m^3/s, Intake fan @ ~1.4e-2 m^3/s).
 - **Status**: Complete
+
+### PyVista Streamline Demo (PC Casing)
+- **What was done**: Added a PyVista-based demo to render 3D streamlines from saved `volume_fields.vts`, seeded from inlet regions in `case.yaml`. The demo overlays the CAD casing mesh with transparency and exports both a still PNG and an animated GIF.
+- **Files created**:
+  - `demos/demo_streamlines_3d_pyvista.py`
+- **Status**: Complete
+
+### External Geometry Mesh Resolution (Gmsh)
+- **What was done**: Modified the external geometry loader (`src/core/geometry/io/gmsh_reader.py` and `src/core/io/case_loader.py`) to accept dynamic `mesh_levels` arrays directly from `case.yaml`. Gmsh now maps the selected level into `Mesh.CharacteristicLengthMin` and `Mesh.CharacteristicLengthMax`. This allows `.step` and `.stl` files to have coarse/medium/fine grids generated identically to parametric shapes.
+- **Files modified**:
+  - `src/core/config/schemas.py` — changed `mesh_levels` validation to `List[Any]` to allow float-based element sizes.
+  - `src/core/io/case_loader.py` — pulled up the `mesh_levels` indexing logic to apply identically to `external` parts if defined.
+  - `src/core/geometry/io/gmsh_reader.py` — added `resolution` param mapped to Gmsh characteristic lengths.
+  - `cases/pc_casing/case.yaml` — Added two mesh levels: `[25.0, 12.0]` (which scale to `0.025` and `0.012` meters).
+- **Checks run**:
+  - `python demos/demo_actuator_disk.py --case cases/pc_casing --mesh-level 0` executed successfully, generating 2384 panels (up from 715) with the finer resolution setting.
+- **Status**: Complete
+
+### Export Inlet/Outlet Cap Meshes
+- **What was done**: Extended the mesh export demo to write inlet/outlet cap meshes alongside ADM disks, handling circle and rectangle boundary shapes.
+- **Files modified**:
+  - `demos/demo_case_mesh_export.py`
+  - `src/solvers/actuator/__init__.py`
+- **Status**: Complete

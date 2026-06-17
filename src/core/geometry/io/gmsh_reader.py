@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import warnings
 
-def read_with_gmsh(path: str | Path, component_id: int = 0, scale: float = 1.0):
+def read_with_gmsh(path: str | Path, component_id: int = 0, scale: float = 1.0, resolution: float = None):
     """
     Read a CAD file (STEP, STL, etc.) using Gmsh and generate a quad surface mesh.
     
@@ -14,6 +14,7 @@ def read_with_gmsh(path: str | Path, component_id: int = 0, scale: float = 1.0):
         path: Path to CAD file
         component_id: Component ID for the generated mesh
         scale: Scaling factor for coordinates
+        resolution: Characteristic length for mesh elements (pre-scaling, e.g., in mm if STEP is mm)
         
     Returns:
         Mesh3D object
@@ -33,6 +34,10 @@ def read_with_gmsh(path: str | Path, component_id: int = 0, scale: float = 1.0):
         gmsh.merge(path_str)
         gmsh.model.occ.synchronize()
         
+        if resolution is not None:
+            gmsh.option.setNumber("Mesh.CharacteristicLengthMin", resolution)
+            gmsh.option.setNumber("Mesh.CharacteristicLengthMax", resolution)
+
         # Set algorithm to front-delaunay for quads
         gmsh.option.setNumber("Mesh.Algorithm", 8)
         gmsh.option.setNumber("Mesh.RecombineAll", 1)

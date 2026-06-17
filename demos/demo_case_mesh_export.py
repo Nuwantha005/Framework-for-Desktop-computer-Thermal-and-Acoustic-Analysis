@@ -23,6 +23,31 @@ def _require_pyvista() -> None:
         ) from exc
 
 
+def _generate_boundary_mesh(boundary, disk_mesh_fn, rect_mesh_fn):
+    if boundary.shape == "circle":
+        if boundary.radius is None:
+            raise ValueError(f"Boundary '{boundary.name}' missing radius")
+        return disk_mesh_fn(
+            center=boundary.center,
+            normal=boundary.normal,
+            radius=boundary.radius,
+            n_r=boundary.n_r,
+            n_theta=boundary.n_theta,
+        )
+    if boundary.shape == "rectangle":
+        if boundary.width is None or boundary.height is None:
+            raise ValueError(f"Boundary '{boundary.name}' missing width/height")
+        return rect_mesh_fn(
+            center=boundary.center,
+            normal=boundary.normal,
+            width=boundary.width,
+            height=boundary.height,
+            n_w=boundary.n_r,
+            n_h=boundary.n_theta,
+        )
+    raise ValueError(f"Unsupported boundary shape '{boundary.shape}' for '{boundary.name}'")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Export case mesh to VTK")
     parser.add_argument("case_dir", type=Path, help="Path to case directory")
@@ -60,11 +85,12 @@ def main() -> int:
     print(f"Exported mesh for case '{config.name}':")
     print(f"  - {out_path}")
 
-    if config.actuator_disks:
-        from solvers.actuator import generate_actuator_disk_mesh
+    if config.actuator_disks or config.inlets or config.outlets:
+        from solvers.actuator import generate_actuator_disk_mesh, generate_rectangular_boundary_mesh
 
         adm_dir = case_dir / "out" / "adm"
         adm_dir.mkdir(parents=True, exist_ok=True)
+
         for index, disk in enumerate(config.actuator_disks):
             disk_mesh = generate_actuator_disk_mesh(
                 center=disk.center,
@@ -76,6 +102,26 @@ def main() -> int:
             disk_path = adm_dir / f"{index:02d}_{disk.name}_mesh.vtp"
             export_mesh_vtk(disk_mesh, disk_path)
             print(f"  - {disk_path}")
+
+        for index, inlet in enumerate(config.inlets):
+            inlet_mesh = _generate_boundary_mesh(
+                inlet,
+                generate_actuator_disk_mesh,
+                generate_rectangular_boundary_mesh,
+            )
+            inlet_path = adm_dir / f"inlet_{index:02d}_{inlet.name}_mesh.vtp"
+            export_mesh_vtk(inlet_mesh, inlet_path)
+            print(f"  - {inlet_path}")
+
+        for index, outlet in enumerate(config.outlets):
+            outlet_mesh = _generate_boundary_mesh(
+                outlet,
+                generate_actuator_disk_mesh,
+                generate_rectangular_boundary_mesh,
+            )
+            outlet_path = adm_dir / f"outlet_{index:02d}_{outlet.name}_mesh.vtp"
+            export_mesh_vtk(outlet_mesh, outlet_path)
+            print(f"  - {outlet_path}")
     return 0
 
 

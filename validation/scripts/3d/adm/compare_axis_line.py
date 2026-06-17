@@ -154,6 +154,11 @@ def _plot_axis_line(
     diff = test - reference
     meta = quantity_meta(quantity)
 
+    # Font sizes
+    label_fs = 14
+    legend_fs = 13
+    tick_fs = 12
+
     fig, axes = plt.subplots(
         2,
         1,
@@ -165,16 +170,18 @@ def _plot_axis_line(
 
     axes[0].plot(axis_coordinate, reference, label="Fluent", linewidth=2.0)
     axes[0].plot(axis_coordinate, test, label="Panel + ADM", linewidth=2.0, linestyle="--")
-    axes[0].set_ylabel(quantity_label(quantity))
-    axes[0].set_title(f"Axis-Line Comparison: {meta['label']}\n{fixed_title}")
+    axes[0].set_ylabel(quantity_label(quantity), fontsize=label_fs)
+    # Title removed per request (fixed axes info omitted)
     axes[0].grid(alpha=0.25)
-    axes[0].legend()
+    axes[0].legend(fontsize=legend_fs)
+    axes[0].tick_params(axis="both", labelsize=tick_fs)
 
     axes[1].plot(axis_coordinate, diff, color="tab:red", linewidth=1.8)
     axes[1].axhline(0.0, color="black", linewidth=0.8, alpha=0.7)
-    axes[1].set_xlabel(f"{line_axis.upper()} [m]")
-    axes[1].set_ylabel("Error")
+    axes[1].set_xlabel(f"{line_axis.upper()} [m]", fontsize=label_fs)
+    axes[1].set_ylabel("Error", fontsize=label_fs)
     axes[1].grid(alpha=0.25)
+    axes[1].tick_params(axis="both", labelsize=tick_fs)
 
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     if not show_plots:

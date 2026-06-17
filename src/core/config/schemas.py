@@ -3,7 +3,7 @@ Pydantic schemas for configuration validation.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Tuple, Optional, Literal
+from typing import List, Tuple, Optional, Literal, Any
 from enum import Enum
 
 
@@ -58,9 +58,9 @@ class ComponentConfig(BaseModel):
     name: str = Field(..., description="Unique component identifier")
     geometry_file: Optional[str] = Field(None, description="Path to geometry file (JSON/XY) - for legacy cases")
     geometry: Optional[GeometryConfig] = Field(None, description="Parametric geometry definition")
-    mesh_levels: Optional[List[List[int]]] = Field(
+    mesh_levels: Optional[List[Any]] = Field(
         None,
-        description="Resolution levels for parametric geometry (each list unpacks to generator params)"
+        description="Resolution levels for parametric geometry (each level can be a list of ints or a float for characteristic length)"
     )
     transform: TransformConfig = Field(
         default_factory=TransformConfig,

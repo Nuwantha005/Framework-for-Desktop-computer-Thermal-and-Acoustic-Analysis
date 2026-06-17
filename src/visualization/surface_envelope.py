@@ -298,8 +298,8 @@ def plot_surface_envelope(
     
     # Formatting
     ax.set_aspect('equal')
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
+    ax.set_xlabel('x [m]')
+    ax.set_ylabel('y [m]')
     
     if title:
         ax.set_title(title)

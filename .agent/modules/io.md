@@ -3,7 +3,8 @@
 
 ## Files
 - `core/io/geometry_io.py` — `GeometryReader` (static: `read_json()`, `read_xy()`, `read()`); standalone `generate_rectangle()`, `generate_circle()`
-- `core/io/case_loader.py` — `CaseLoader` (static: `load()`, `validate()`, `load_case()`) — parses YAML, creates Scene via GeometryFactory, added 3D specific loading paths `_build_scene_3d`.
+- `core/geometry/io/gmsh_reader.py` — `read_with_gmsh()` (loads `.step` and `.stl` using Gmsh to yield quad meshes)
+- `core/io/case_loader.py` — `CaseLoader` (static: `load()`, `validate()`, `load_case()`) — parses YAML, creates Scene via GeometryFactory, added 3D specific loading paths `_build_scene_3d`, and CAD `.step/.stl` integration via `read_with_gmsh`.
 - `core/io/case.py` — `Case` dataclass: unified wrapper holding Scene + SimulationConfig + case_dir; cached mesh property; convenience accessors (v_inf, aoa, x_range, y_range, resolution, etc.); `create_solver()`, `get_fluid_state()`
 - `core/io/case_exporter.py` — `CaseExporter` (class methods: `from_scene()`, `from_mesh()`) — exports to JSON/YAML
 - `core/config/schemas.py` — Pydantic models: `SimulationConfig`, `ComponentConfig`, `SolverConfig`, `FluidConfig`, `VisualizationConfig`, `GeometryConfig`, `TransformConfig`, `OutputConfig`, `BoundaryConditionType`

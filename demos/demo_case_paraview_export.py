@@ -70,6 +70,7 @@ def _volume_export(
     z_range,
     resolution,
     volume_path: Path,
+    volume_domain: str,
 ) -> None:
     """Export structured 3D volume fields to VTS."""
     nx, ny, nz = resolution
@@ -92,16 +93,29 @@ def _volume_export(
     
     print("Masking interior points...")
     enclosed = grid.select_enclosed_points(surface_pd, check_surface=False)
-    mask = enclosed['SelectedPoints'] == 1
+    mask = enclosed["SelectedPoints"] == 1
     
     vel = np.zeros((points.shape[0], 3), dtype=np.float64)
     vel[:] = np.nan
     
-    exterior_mask = ~mask
-    exterior_points = points[exterior_mask]
-    
-    print(f"Computing velocity for {len(exterior_points)} exterior points out of {len(points)}...")
-    vel[exterior_mask] = solver.velocity_at(exterior_points)
+    if volume_domain == "exterior":
+        active_mask = ~mask
+        label = "exterior"
+    elif volume_domain == "interior":
+        active_mask = mask
+        label = "interior"
+    elif volume_domain == "none":
+        active_mask = np.ones(len(points), dtype=bool)
+        label = "all"
+    else:
+        raise ValueError(f"Unknown volume_domain '{volume_domain}'")
+
+    active_points = points[active_mask]
+
+    print(
+        f"Computing velocity for {len(active_points)} {label} points out of {len(points)}..."
+    )
+    vel[active_mask] = solver.velocity_at(active_points)
 
     speed = np.linalg.norm(vel, axis=1)
 
@@ -112,7 +126,7 @@ def _volume_export(
 
     if hasattr(solver, "pressure_at"):
         pressure = np.full(points.shape[0], np.nan, dtype=np.float64)
-        pressure[exterior_mask] = np.asarray(solver.pressure_at(exterior_points), dtype=np.float64)
+        pressure[active_mask] = np.asarray(solver.pressure_at(active_points), dtype=np.float64)
     else:
         pressure = np.full(points.shape[0], np.nan, dtype=np.float64)
 
@@ -192,6 +206,13 @@ def main() -> int:
         default=None,
         help="Output directory (default: <case>/out/panel_solver)",
     )
+    parser.add_argument(
+        "--volume-domain",
+        type=str,
+        default="exterior",
+        choices=["exterior", "interior", "none"],
+        help="Mask region for volume fields (default: exterior).",
+    )
     args = parser.parse_args()
 
     pv = _require_pyvista()
@@ -232,7 +253,17 @@ def main() -> int:
     volume_path = output_dir / "volume_fields.vts"
 
     _surface_export(case_dir, mesh, solver, config, surface_path)
-    _volume_export(pv, solver, config, x_range, y_range, z_range, resolution, volume_path)
+    _volume_export(
+        pv,
+        solver,
+        config,
+        x_range,
+        y_range,
+        z_range,
+        resolution,
+        volume_path,
+        args.volume_domain,
+    )
 
     print("Export complete:")
     print(f"  - {surface_path}")

@@ -28,7 +28,7 @@ components:
       type: "wall"
 
 solver:
-  type: "linear_source"
+  type: "constant_source"
   tolerance: 1.0e-10
 
 fluid:

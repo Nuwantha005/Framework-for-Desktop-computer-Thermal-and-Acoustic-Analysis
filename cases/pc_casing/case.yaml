@@ -14,6 +14,12 @@ components:
       file: shapes/casing.STEP
       parameters:
         scale: 0.001
+    mesh_levels:
+      - 25.0
+      - 12.0
+      - 6.0
+      - 3.0
+      - 1.5
     transform:
       translation: [0.0, 0.0, 0.0]
       rotation_xyz_deg: [0.0, 0.0, 0.0]

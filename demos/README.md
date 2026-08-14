@@ -10,6 +10,7 @@ Demo scripts that operate on case files in `../cases/`.
 | `demo_streamlines.py` | Solve and plot streamlines |
 | `demo_contours.py` | Solve and plot velocity contours |
 | `demo_combined.py` | Combined 2×2 subplot (mesh, contours, streamlines, Cp) |
+| `demo_actuator_disk.py` | Run a 3D case with optional actuator disk coupling |
 
 ## Usage
 
@@ -28,6 +29,9 @@ python demo_combined.py ../cases/single_square --save --cores 6
 
 # Save to timestamped subfolder (avoids overwriting)
 python demo_combined.py ../cases/cylinder_flow --save --protect
+
+# Run actuator disk coupling for the circular vent case
+python demo_actuator_disk.py --case ../cases/cicular_vent
 ```
 
 ## Arguments

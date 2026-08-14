@@ -39,3 +39,13 @@
 **Date**: Phase 5
 **Decision**: `VelocityField2D` masks grid points inside each body component independently using the component's mesh boundary.
 **Reason**: Prevents velocity artifacts inside solid bodies. Per-component masking handles multi-body cases where bodies may be close together, avoiding masking gaps between them.
+
+## ADR-009: MeshBase/Mesh2D/Mesh3D Hierarchy
+**Date**: 3D Solver Phase 0
+**Decision**: Refactored the flat `Mesh` geometry container into `MeshBase` (ABC) with `Mesh2D` and `Mesh3D` implementations. Added native quad panel properties.
+**Reason**: Ensures a unified API for data structures so solvers and components can be extended to 3D without polluting 2D namespaces or maintaining two identical architectural stacks. 
+
+## ADR-010: Numba JIT and Parallelization for 3D
+**Date**: 3D Solver Phase 1
+**Decision**: Replaced all pure Python nested `for` loops in 3D source influence and velocity evaluations with `@njit(fastmath=True, cache=True)` compiled functions utilizing `prange` parallelization.
+**Reason**: The 3D constant-strength source method requires evaluating computationally heavy expressions (logarithms, arctangents) repeatedly ($O(N^2)$ scaling). Initial tests found solving a ~2000 panel system timed out in pure Python. The Numba integration reduced influence matrix build times from >120s down to ~0.5s for 2000 panels, enabling rapid iteration and future higher-resolution meshes.

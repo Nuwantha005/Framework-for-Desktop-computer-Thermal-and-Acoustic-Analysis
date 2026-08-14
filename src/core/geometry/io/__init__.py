@@ -7,12 +7,13 @@ Provides functions for:
 - Exporting meshes and solutions to VTK for ParaView
 """
 
-from .sphere_generator import generate_sphere
+from .sphere_generator import generate_sphere, generate_cylinder
 from .stl_reader import read_stl, read_mesh
 from .vtk_export import export_solution_vtk, export_mesh_vtk
 
 __all__ = [
     "generate_sphere",
+    "generate_cylinder",
     "read_stl",
     "read_mesh",
     "export_solution_vtk",

@@ -80,7 +80,7 @@ class Scene:
         # Concatenate all meshes
         return self._concatenate_meshes(global_meshes, dimension)
     
-    def _concatenate_meshes(self, meshes: List[Mesh], dimension: int) -> Mesh:
+    def _concatenate_meshes(self, meshes: List['MeshBase'], dimension: int):
         """
         Concatenate multiple meshes into one.
         
@@ -98,6 +98,8 @@ class Scene:
         all_centers = []
         all_normals = []
         all_tangents = []
+        all_tangent1 = []
+        all_tangent2 = []
         all_areas = []
         
         node_offset = 0
@@ -118,8 +120,15 @@ class Scene:
                 all_centers.append(mesh.centers)
             if mesh.normals is not None:
                 all_normals.append(mesh.normals)
-            if mesh.tangents is not None:
+                
+            if dimension == 2 and getattr(mesh, "tangents", None) is not None:
                 all_tangents.append(mesh.tangents)
+            elif dimension == 3:
+                if getattr(mesh, "tangent1", None) is not None:
+                    all_tangent1.append(mesh.tangent1)
+                if getattr(mesh, "tangent2", None) is not None:
+                    all_tangent2.append(mesh.tangent2)
+                    
             if mesh.areas is not None:
                 all_areas.append(mesh.areas)
             
@@ -131,19 +140,32 @@ class Scene:
         global_component_ids = np.hstack(all_component_ids).astype(np.int32)
         
         # Create global mesh
-        global_mesh = Mesh(
-            nodes=global_nodes,
-            panels=global_panels,
-            component_ids=global_component_ids
-        )
+        if dimension == 3:
+            from .mesh3d import Mesh3D
+            global_mesh = Mesh3D(
+                nodes=global_nodes,
+                panels=global_panels,
+                component_ids=global_component_ids
+            )
+            if all_tangent1:
+                global_mesh.tangent1 = np.vstack(all_tangent1)
+            if all_tangent2:
+                global_mesh.tangent2 = np.vstack(all_tangent2)
+        else:
+            from .mesh2d import Mesh2D
+            global_mesh = Mesh2D(
+                nodes=global_nodes,
+                panels=global_panels,
+                component_ids=global_component_ids
+            )
+            if all_tangents:
+                global_mesh.tangents = np.vstack(all_tangents)
         
         # Override computed geometry (already transformed)
         if all_centers:
             global_mesh.centers = np.vstack(all_centers)
         if all_normals:
             global_mesh.normals = np.vstack(all_normals)
-        if all_tangents:
-            global_mesh.tangents = np.vstack(all_tangents)
         if all_areas:
             global_mesh.areas = np.hstack(all_areas)
         

@@ -163,7 +163,7 @@ class Component:
         if self.metadata is None:
             self.metadata = {}
     
-    def get_global_mesh(self, component_id: int) -> Mesh:
+    def get_global_mesh(self, component_id: int):
         """
         Apply transform to local mesh and return global mesh.
         
@@ -176,34 +176,52 @@ class Component:
         # Transform nodes
         global_nodes = self.transform.apply_to_point(self.local_mesh.nodes)
         
-        # Transform normals and tangents (rotation only)
+        # Transform normals
         global_normals = None
-        global_tangents = None
-        
         if self.local_mesh.normals is not None:
             global_normals = self.transform.apply_to_vector(self.local_mesh.normals)
-        
-        if self.local_mesh.tangents is not None:
-            global_tangents = self.transform.apply_to_vector(self.local_mesh.tangents)
-        
+            
         # Transform centers
         global_centers = None
         if self.local_mesh.centers is not None:
             global_centers = self.transform.apply_to_point(self.local_mesh.centers)
+            
+        component_ids = np.full(self.local_mesh.num_panels, component_id, dtype=np.int32)
+        areas = self.local_mesh.areas.copy() if self.local_mesh.areas is not None else None
         
-        # Create new mesh with global coordinates
-        # Areas don't change under rigid transform
-        global_mesh = Mesh(
-            nodes=global_nodes,
-            panels=self.local_mesh.panels.copy(),
-            component_ids=np.full(self.local_mesh.num_panels, component_id, dtype=np.int32)
-        )
+        if self.local_mesh.dimension == 3:
+            from .mesh3d import Mesh3D
+            global_tangent1 = None
+            global_tangent2 = None
+            if getattr(self.local_mesh, "tangent1", None) is not None:
+                global_tangent1 = self.transform.apply_to_vector(self.local_mesh.tangent1)
+            if getattr(self.local_mesh, "tangent2", None) is not None:
+                global_tangent2 = self.transform.apply_to_vector(self.local_mesh.tangent2)
+                
+            global_mesh = Mesh3D(
+                nodes=global_nodes,
+                panels=self.local_mesh.panels.copy(),
+                component_ids=component_ids
+            )
+            global_mesh.tangent1 = global_tangent1
+            global_mesh.tangent2 = global_tangent2
+        else:
+            from .mesh2d import Mesh2D
+            global_tangents = None
+            if getattr(self.local_mesh, "tangents", None) is not None:
+                global_tangents = self.transform.apply_to_vector(self.local_mesh.tangents)
+                
+            global_mesh = Mesh2D(
+                nodes=global_nodes,
+                panels=self.local_mesh.panels.copy(),
+                component_ids=component_ids
+            )
+            global_mesh.tangents = global_tangents
         
         # Override computed geometry with transformed values
         global_mesh.centers = global_centers
         global_mesh.normals = global_normals
-        global_mesh.tangents = global_tangents
-        global_mesh.areas = self.local_mesh.areas.copy() if self.local_mesh.areas is not None else None
+        global_mesh.areas = areas
         
         return global_mesh
     

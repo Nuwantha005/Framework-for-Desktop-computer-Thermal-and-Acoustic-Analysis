@@ -7,8 +7,9 @@ Supports tuple-based resolution parameters that unpack directly to function argu
 
 from typing import Dict, Callable, Any, List
 
-from .mesh import Mesh
+from .mesh_base import MeshBase
 from . import generators
+from .io import sphere_generator
 
 
 class GeometryFactory:
@@ -27,14 +28,17 @@ class GeometryFactory:
     """
     
     # Registry mapping type strings to generator functions
-    _generators: Dict[str, Callable[..., Mesh]] = {
+    _generators: Dict[str, Callable[..., MeshBase]] = {
         "circle": generators.generate_circle,
         "rectangle": generators.generate_rectangle,
         "rounded_rectangle": generators.generate_rounded_rectangle,
+        "sphere": sphere_generator.generate_sphere,
+        "cylinder": sphere_generator.generate_cylinder,
+        "thick_cylinder": sphere_generator.generate_thick_cylinder,
     }
     
     @classmethod
-    def create(cls, geometry_definition: dict, resolution: List[int]) -> Mesh:
+    def create(cls, geometry_definition: dict, resolution: List[int]) -> MeshBase:
         """
         Create geometry mesh at specified resolution.
         
@@ -86,13 +90,13 @@ class GeometryFactory:
         return mesh
     
     @classmethod
-    def register(cls, type_name: str, generator_func: Callable[..., Mesh]) -> None:
+    def register(cls, type_name: str, generator_func: Callable[..., MeshBase]) -> None:
         """
         Register custom geometry generator.
         
         Args:
             type_name: String identifier for geometry type
-            generator_func: Function that takes (*resolution_params, **shape_params) and returns Mesh
+            generator_func: Function that takes (*resolution_params, **shape_params) and returns MeshBase
         
         Example:
             >>> def generate_ellipse(num_panels, a, b, center=(0, 0)):

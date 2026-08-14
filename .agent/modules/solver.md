@@ -1,6 +1,16 @@
 # Solver Module State
 **Last modified**: 2026-03-28 (Thermal BL solver integration)
 
+## ADM Update
+- `solvers/actuator/` — simple actuator disk model for 3D panel coupling, using contiguous constant-strength doublet panels (vortex rings) to enforce pressure jumps without tip leakage. Features `inlets` and `outlets` (source/sink meshes) that are automatically constrained to the system flow rate ($Q$) by the ADM loop, ensuring internal flow perfectly traverses from inlet to exhaust.
+- `ActuatorDiskCoupledSolver3D` wraps the configured 3D panel solver from
+  `SolverFactory`; it is not hard-wired to `SourcePanelSolver3D`.
+- 3D solvers can support ADM by honoring
+  `solve(normal_velocity_disturbance=...)` in the body-panel RHS.
+- Cases without `actuator_disks` follow the existing solver path unchanged.
+- Generic 3D scripts should call `Case.create_solver()` rather than
+  `SolverFactory.create()` directly, otherwise ADM coupling is bypassed.
+
 ## Files
 - `solvers/base.py` — `Solver` ABC: `solve()`, `surface_velocity`, `velocity_at(points)`, `is_solved`, `mesh`
 - `solvers/factory.py` — `SolverFactory`: registry `(singularity, order, geometry) → class`; `register()`, `create()`, `create_panel_solver()`, `available()`, `is_registered()`
@@ -15,7 +25,9 @@
 - `solvers/panel2d/influences/linear_source.py` — `compute_linear_source_influence_matrices(mesh) → (I, J)`; `compute_linear_source_velocity_field(points, mesh, strengths)`
 - `solvers/panel2d/influences/linear_vortex.py` — `compute_linear_vortex_influence_matrices(mesh) → (I, J)`; `compute_linear_vortex_velocity_influence(point, ...) → ((Mx_a, My_a), (Mx_b, My_b))`; `compute_linear_vortex_velocity_field(points, mesh, gamma)`
 - `solvers/panel2d/influences/doublet.py` — `compute_doublet_potential_influence(point, start, end) → coeff`; `compute_doublet_influence_matrix(mesh) → C`; `compute_source_potential_matrix(mesh) → B`; `compute_doublet_velocity_influence(point, start, end) → (u, w)`
-- `solvers/panel2d/influences/linear_doublet.py` — `compute_linear_doublet_potential_influence(point, start, end) → (Φ_a, Φ_b)` (K&P Eqs. 11.114/11.115); `compute_linear_source_potential_influence(point, start, end) → (B_a, B_b)`; `compute_linear_doublet_influence_matrix(mesh) → C` (N,N node-accumulation); `compute_linear_source_potential_matrix(mesh) → B` (N,N); `compute_linear_doublet_velocity_influence(point, start, end) → ((u_a,w_a),(u_b,w_b))`; `compute_linear_doublet_velocity_field(points, mesh, mu) → (M,2)`
+- `solvers/panel3d/base.py` — `PanelSolver3D` ABC: 3D counterpart to PanelSolver2D.
+- `solvers/panel3d/source_panel_solver.py` — `SourcePanelSolver3D(PanelSolver3D)`: 3D constant-strength source panel method (Hess-Smith/Katz & Plotkin); properties: `sigma`, `Vt`, `Cp`.
+- `solvers/panel3d/influences/source3d.py` — `compute_source_influence_matrix()`, `compute_all_velocities_influence()`: Highly optimized (Numba JIT, parallelized) functions evaluating 3D quad source panel influences.
 - `solvers/boundary_layer/__init__.py` — package exports for BL solver and field reconstruction
 - `solvers/boundary_layer/base.py` — `BoundaryLayerSolver` (Von Kármán integral ODE solver), `BoundaryLayerResult` (dataclass container for θ, δ*, C_f∞, H, Re_θ); accepts optional `K` for stagnation patching
 - `solvers/boundary_layer/runner.py` — `BoundaryLayerRunner` (orchestration), `BoundaryLayerPathResult`, `BoundaryLayerCaseResult`; exact stagnation detection via `_interpolate_stagnation()`, velocity gradient `_compute_K()`, optional velocity-field reconstruction
@@ -120,6 +132,7 @@ components:
 - `("vortex", "linear", "flat")` → `LinearVortexPanelSolver`
 - `("source_doublet", "constant", "flat")` → `DirichletDoubletSolver`
 - `("source_doublet", "linear", "flat")` → `LinearSourceDoubletSolver`
+- `("source_3d", "constant", "flat")` → `SourcePanelSolver3D`
 
 ## Solver Aliases (comparison framework)
 - `"constant"` → `"constant_source"`

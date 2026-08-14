@@ -3,7 +3,7 @@ Pydantic schemas for configuration validation.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Tuple, Optional, Literal
+from typing import List, Tuple, Optional, Literal, Any
 from enum import Enum
 
 
@@ -40,8 +40,9 @@ class TransformConfig(BaseModel):
 
 class GeometryConfig(BaseModel):
     """Parametric geometry configuration."""
-    type: str = Field(..., description="Geometry type (circle, rectangle, rounded_rectangle)")
+    type: str = Field(..., description="Geometry type (circle, rectangle, rounded_rectangle, sphere, cylinder, box, external)")
     parameters: dict = Field(default_factory=dict, description="Shape parameters (width, height, radius, etc.)")
+    file: Optional[str] = Field(None, description="Path to geometry file for external meshes")
     
     @field_validator('type')
     @classmethod
@@ -57,9 +58,9 @@ class ComponentConfig(BaseModel):
     name: str = Field(..., description="Unique component identifier")
     geometry_file: Optional[str] = Field(None, description="Path to geometry file (JSON/XY) - for legacy cases")
     geometry: Optional[GeometryConfig] = Field(None, description="Parametric geometry definition")
-    mesh_levels: Optional[List[List[int]]] = Field(
+    mesh_levels: Optional[List[Any]] = Field(
         None,
-        description="Resolution levels for parametric geometry (each list unpacks to generator params)"
+        description="Resolution levels for parametric geometry (each level can be a list of ints or a float for characteristic length)"
     )
     transform: TransformConfig = Field(
         default_factory=TransformConfig,
@@ -86,7 +87,7 @@ class ComponentConfig(BaseModel):
             raise ValueError(f"Component '{self.name}': cannot specify both 'geometry_file' and 'geometry'")
         
         # Validate mesh_levels is provided for parametric geometry
-        if self.geometry is not None and self.mesh_levels is None:
+        if self.geometry is not None and self.geometry.type != "external" and self.mesh_levels is None:
             raise ValueError(f"Component '{self.name}': parametric geometry requires 'mesh_levels'")
         if self.geometry_file is not None and self.mesh_levels is not None:
             raise ValueError(f"Component '{self.name}': 'mesh_levels' only valid for parametric geometry")
@@ -212,6 +213,77 @@ class ThermalConfig(BaseModel):
     )
 
 
+
+class BoundaryRegionConfig(BaseModel):
+    name: str = Field(..., description="Boundary region name")
+    shape: Literal["circle", "rectangle"] = Field(default="circle")
+    center: Tuple[float, float, float]
+    normal: Tuple[float, float, float]
+    radius: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    n_r: int = 6
+    n_theta: int = 24
+
+
+class ActuatorDiskConfig(BaseModel):
+    """Configuration for one actuator disk / fan."""
+    name: str = Field(..., description="Unique actuator disk identifier")
+    center: Tuple[float, float, float] = Field(
+        ...,
+        description="Disk center coordinates [m]"
+    )
+    normal: Tuple[float, float, float] = Field(
+        ...,
+        description="Disk normal; defines positive flow and pressure-rise direction"
+    )
+    radius: float = Field(..., gt=0, description="Disk radius [m]")
+    n_r: int = Field(default=6, ge=1, description="Number of radial disk subdivisions")
+    n_theta: int = Field(default=48, ge=3, description="Number of azimuthal disk subdivisions")
+    curve_file: str = Field(..., description="Fan P-Q curve CSV path relative to case directory")
+    interpolation: Literal["linear", "cubic"] = Field(
+        default="linear",
+        description="Fan curve interpolation method"
+    )
+    dp_initial: Optional[float] = Field(
+        default=None,
+        description="Initial pressure rise [Pa]. If omitted, use curve midpoint."
+    )
+    relaxation: float = Field(
+        default=0.4,
+        gt=0,
+        le=1,
+        description="Under-relaxation factor for P-Q iteration"
+    )
+    tolerance: float = Field(
+        default=1e-3,
+        gt=0,
+        description="Pressure-rise convergence tolerance [Pa]"
+    )
+    max_iterations: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum P-Q iterations"
+    )
+
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v):
+        """Check name is valid."""
+        if not v or not v.strip():
+            raise ValueError("Actuator disk name cannot be empty")
+        return v.strip()
+
+    @field_validator('normal')
+    @classmethod
+    def validate_normal(cls, v):
+        """Check disk normal is nonzero."""
+        norm_sq = sum(component * component for component in v)
+        if norm_sq <= 1e-24:
+            raise ValueError("Actuator disk normal must be nonzero")
+        return v
+
+
 class OutputConfig(BaseModel):
     """Output configuration."""
     directory: str = Field(
@@ -282,11 +354,11 @@ class VisualizationConfig(BaseModel):
     # Domain settings
     domain: Optional[dict] = Field(
         default=None,
-        description="Visualization domain {x_range: [min, max], y_range: [min, max]}"
+        description="Visualization domain {x_range: [min, max], y_range: [min, max], z_range: [min, max]}"
     )
-    resolution: Tuple[int, int] = Field(
+    resolution: Tuple[int, ...] = Field(
         default=(150, 120),
-        description="Grid resolution for field plots (nx, ny)"
+        description="Grid resolution for field plots (nx, ny, [nz])"
     )
     
     # Legacy field (deprecated, use resolution instead)
@@ -318,6 +390,12 @@ class VisualizationConfig(BaseModel):
             return tuple(self.domain['y_range'])
         return default
 
+    def get_z_range(self, default: Tuple[float, float] = (-2.0, 2.0)) -> Tuple[float, float]:
+        """Get z_range from domain or return default."""
+        if self.domain and 'z_range' in self.domain:
+            return tuple(self.domain['z_range'])
+        return default
+
 
 class SimulationConfig(BaseModel):
     """Top-level simulation configuration."""
@@ -328,7 +406,9 @@ class SimulationConfig(BaseModel):
         "parametric_2d",
         "gmsh_2d",
         "gmsh_3d",
-        "step_import"
+        "step_import",
+        "parametric_3d",
+        "external_3d"
     ] = Field(..., description="Case type")
     description: str = Field(default="", description="Case description")
     
@@ -372,6 +452,22 @@ class SimulationConfig(BaseModel):
         default_factory=ThermalConfig,
         description="Thermal boundary layer solver settings (optional)"
     )
+
+    actuator_disks: List[ActuatorDiskConfig] = Field(
+        default_factory=list,
+        description="Actuator disk / fan definitions (optional)"
+    )
+    
+    inlets: List[BoundaryRegionConfig] = Field(
+        default_factory=list,
+        description="Inlet boundary conditions (optional)"
+    )
+    
+    outlets: List[BoundaryRegionConfig] = Field(
+        default_factory=list,
+        description="Outlet boundary conditions (optional)"
+    )
+
     
     class Config:
         """Pydantic config."""
@@ -386,6 +482,16 @@ class SimulationConfig(BaseModel):
         if len(names) != len(set(names)):
             duplicates = [name for name in names if names.count(name) > 1]
             raise ValueError(f"Duplicate component names: {set(duplicates)}")
+        return v
+
+    @field_validator('actuator_disks')
+    @classmethod
+    def check_unique_actuator_disk_names(cls, v):
+        """Ensure actuator disk names are unique."""
+        names = [disk.name for disk in v]
+        if len(names) != len(set(names)):
+            duplicates = [name for name in names if names.count(name) > 1]
+            raise ValueError(f"Duplicate actuator disk names: {set(duplicates)}")
         return v
     
     def get_freestream_velocity(self) -> Tuple[float, float, float]:

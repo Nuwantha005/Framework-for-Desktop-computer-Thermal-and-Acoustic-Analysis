@@ -75,10 +75,10 @@ class Mesh3D(MeshBase):
             self.centers[i] = 0.25 * (p1 + p2 + p3 + p4)
             
             # Normal via cross product of diagonals
-            # For planar quad: n = (p3 - p1) × (p4 - p2)
+            # For CCW ordering (viewed from outside), outward normal = (p4-p2) × (p3-p1)
             d1 = p3 - p1
             d2 = p4 - p2
-            normal = np.cross(d1, d2)
+            normal = np.cross(d2, d1)  # Note: d2 × d1 for outward normal
             normal_mag = np.linalg.norm(normal)
             
             if normal_mag < 1e-14:

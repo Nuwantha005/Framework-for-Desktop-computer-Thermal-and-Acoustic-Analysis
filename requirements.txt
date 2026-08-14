@@ -30,6 +30,7 @@ mypy>=1.5.0
 # Utilities
 rich>=13.5.0
 joblib>=1.3.0
+numba>=0.58.0
 
 # HDF5 storage (for results)
 h5py>=3.9.0

@@ -323,6 +323,14 @@ def visualize_surface_comparison(case_dir: Path, output_dir: Path, viz_config: D
             panel_df = panel_data[comp_name]
             of_df = of_data[comp_name]
             
+            # Ensure strictly increasing 's' by dropping duplicates and sorting
+            panel_df = panel_df.drop_duplicates(subset=['s'], keep='first').sort_values('s')
+            of_df = of_df.drop_duplicates(subset=['s'], keep='first').sort_values('s')
+            
+            # Update the dicts so envelope plots also get the cleaned data
+            panel_data[comp_name] = panel_df
+            of_data[comp_name] = of_df
+            
             for quantity in quantities:
                 if quantity not in panel_df.columns or quantity not in of_df.columns:
                     continue
@@ -349,9 +357,13 @@ def visualize_surface_comparison(case_dir: Path, output_dir: Path, viz_config: D
                     s_max = min(panel_df['s'].max(), of_df['s'].max())
                     s_common = np.linspace(s_min, s_max, 200)
                     
-                    panel_interp = interp1d(panel_df['s'], panel_df[quantity], 
+                    # Use unique 's' values to prevent divide-by-zero warnings in interp1d
+                    p_s, p_idx = np.unique(panel_df['s'], return_index=True)
+                    o_s, o_idx = np.unique(of_df['s'], return_index=True)
+                    
+                    panel_interp = interp1d(p_s, panel_df[quantity].values[p_idx], 
                                            kind='linear', fill_value='extrapolate')
-                    of_interp = interp1d(of_df['s'], of_df[quantity],
+                    of_interp = interp1d(o_s, of_df[quantity].values[o_idx],
                                         kind='linear', fill_value='extrapolate')
                     
                     diff = panel_interp(s_common) - of_interp(s_common)
@@ -525,8 +537,11 @@ def _generate_surface_envelope_plots(
                 panel_s = panel_df['s'].values
                 of_s = of_df['s'].values
                 
+                # Use unique 's' values to prevent divide-by-zero warnings in interp1d
+                o_s, o_idx = np.unique(of_s, return_index=True)
+                
                 # Interpolate OF values to panel arc length positions
-                of_interp = interp1d(of_s, of_values, kind='linear', 
+                of_interp = interp1d(o_s, of_values[o_idx], kind='linear', 
                                     bounds_error=False, fill_value='extrapolate')
                 of_values_interp = of_interp(panel_s)
                 

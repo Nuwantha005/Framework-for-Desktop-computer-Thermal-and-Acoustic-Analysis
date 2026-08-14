@@ -412,13 +412,13 @@ def plot_surface_envelope_comparison(
                    zorder=5+i, label=label if seg == segments[0] else "")
     
     ax.set_aspect('equal')
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
+    ax.set_xlabel('x [m]')
+    ax.set_ylabel('y [m]')
     ax.legend(loc='upper right')
     ax.grid(True, alpha=0.3)
     
     if title:
-        ax.set_title(title)
+        ax.set_title(title, fontsize=13)
     
     return fig, ax
 
@@ -529,8 +529,8 @@ def plot_dual_surface_envelope(
                       c='orange', s=20, zorder=15, label='High difference', alpha=0.7)
     
     ax.set_aspect('equal')
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
+    ax.set_xlabel('x [m]')
+    ax.set_ylabel('y [m]')
     ax.legend(loc='upper right')
     ax.grid(True, alpha=0.3)
     

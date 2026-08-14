@@ -202,8 +202,8 @@ class SolverComparisonVisualizer:
         """Plot Vt vs arc-length s for all solvers (+ OF reference)."""
         return self._plot_quantity_vs_arc_length(
             quantity="Vt",
-            ylabel=r"$V_t / V_\infty$",
-            title=self._title("Tangential Velocity vs Arc Length"),
+            ylabel=r"Normalized Velocity ($V_t / V_\infty$)",
+            title=self._title("Normalized Tangential Velocity vs Arc Length"),
         )
 
     def plot_cp_vs_arc_length(self) -> Figure:
@@ -382,7 +382,7 @@ class SolverComparisonVisualizer:
             ax.plot(s, vals, color=self.colors[i % len(self.colors)],
                     label=r.label, linewidth=1.5)
 
-        ax.set_xlabel("Arc length s")
+        ax.set_xlabel("Arc length (m)")
         ax.set_ylabel(ylabel)
         ax.legend()
         ax.grid(True, alpha=0.3)

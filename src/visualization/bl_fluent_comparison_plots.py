@@ -531,20 +531,21 @@ def plot_bl_velocity_envelope_comparison(
 
     sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=norm)
     sm.set_array([])
-    fig.colorbar(sm, ax=ax, label=r"$u_{\mathrm{BL}} - u_{\mathrm{Fluent}}$ [m/s]", shrink=0.8, pad=0.02)
-
+    cbar= fig.colorbar(sm, ax=ax, label=r"$u_{\mathrm{BL}} - u_{\mathrm{Fluent}}$ [m/s]", shrink=0.8, pad=0.02)
+    cbar.set_label("u [m/s]", size=16)   # Main text size
+    cbar.ax.tick_params(labelsize=14)    # Numbers size
     ax.plot([], [], "k-", lw=1.2, label="delta (BL)")
     ax.plot([], [], "k--", lw=1.2, label="delta (Fluent)")
     ax.set_aspect("equal")
-    ax.set_xlabel("$x$")
-    ax.set_ylabel("$y$")
+    ax.set_xlabel("$x$ [m]")
+    ax.set_ylabel("$y$ [m]")
     ax.legend(loc="upper right", fontsize=8, framealpha=0.8)
     ax.grid(True, alpha=0.3)
 
     if title:
-        ax.set_title(title, fontsize=11)
+        ax.set_title(title, fontsize=14)
     else:
-        ax.set_title(f"Velocity difference envelope - {profile_name} vs Fluent", fontsize=11)
+        ax.set_title(f"Velocity difference envelope - {profile_name} vs Fluent", fontsize=14)
     fig.tight_layout()
 
     if output_path is not None:
@@ -699,9 +700,9 @@ def plot_bl_fluent_envelope_side_by_side(
     for ax, name in [(ax_bl, "BL Solver"), (ax_fl, "Fluent CFD")]:
         ax.plot(bx, by, "k-", lw=2.0, zorder=10)
         ax.set_aspect("equal")
-        ax.set_title(name, fontsize=11)
-        ax.set_xlabel("$x$")
-        ax.set_ylabel("$y$")
+        ax.set_title(name, fontsize=13)
+        ax.set_xlabel("$x$ [m]")
+        ax.set_ylabel("$y$ [m]")
 
     _draw_envelope_absolute_quads(
         ax_bl,
@@ -770,7 +771,9 @@ def plot_bl_fluent_envelope_side_by_side(
 
     sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=norm)
     sm.set_array([])
-    fig.colorbar(sm, ax=[ax_bl, ax_fl], label="u [m/s]", shrink=0.8, pad=0.02)
+    cbar = fig.colorbar(sm, ax=[ax_bl, ax_fl], label="u [m/s]", shrink=0.8, pad=0.02)
+    cbar.set_label("u [m/s]", size=16)   # Main text size
+    cbar.ax.tick_params(labelsize=14)    # Numbers size
 
     ax_bl.plot([], [], "k-", lw=1.2, label="delta")
     ax_bl.legend(loc="upper right", fontsize=8)
@@ -778,7 +781,7 @@ def plot_bl_fluent_envelope_side_by_side(
     ax_fl.legend(loc="upper right", fontsize=8)
 
     if title:
-        fig.suptitle(title, fontsize=12)
+        fig.suptitle(title, fontsize=14)
     if output_path is not None:
         fig.savefig(output_path, dpi=150, bbox_inches="tight")
     return fig, np.array([ax_bl, ax_fl])

@@ -199,7 +199,7 @@ def _plot_absolute_stack(
     levels = np.linspace(vmin, vmax, 61)
     norm = colors.Normalize(vmin=vmin, vmax=vmax)
 
-    fig, axes = plt.subplots(2, 1, figsize=(12, 8), constrained_layout=True)
+    fig, axes = plt.subplots(2, 1, figsize=(12, 4), constrained_layout=True)
     for axis, values, title in [
         (axes[0], reference[valid], "Fluent"),
         (axes[1], test[valid], "Panel + ADM"),
@@ -212,9 +212,9 @@ def _plot_absolute_stack(
             norm=norm,
         )
         axis.set_aspect("equal")
-        axis.set_xlabel(f"{plane_axes[0].upper()} [m]")
-        axis.set_ylabel(f"{plane_axes[1].upper()} [m]")
-        axis.set_title(f"{title}: {quantity_label(quantity)}")
+        axis.set_xlabel(f"{plane_axes[0].upper()} [m]", fontsize=12)
+        axis.set_ylabel(f"{plane_axes[1].upper()} [m]", fontsize=12)
+        axis.set_title(f"{title}: {quantity_label(quantity)}", fontsize=13)
         axis.grid(alpha=0.2)
 
     colorbar = fig.colorbar(
@@ -223,7 +223,9 @@ def _plot_absolute_stack(
         label=quantity_label(quantity),
     )
     colorbar.set_ticks(np.linspace(vmin, vmax, 7))
-    fig.suptitle(f"ADM Cut-Plane Comparison ({plane_title})")
+    colorbar.ax.tick_params(labelsize=10)
+    colorbar.set_label(quantity_label(quantity), fontsize=12)
+    fig.suptitle(f"ADM Cut-Plane Comparison ({plane_title})", fontsize=14)
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     if not show_plots:
         plt.close(fig)
@@ -261,9 +263,9 @@ def _plot_difference(
         norm=norm,
     )
     axis.set_aspect("equal")
-    axis.set_xlabel(f"{plane_axes[0].upper()} [m]")
-    axis.set_ylabel(f"{plane_axes[1].upper()} [m]")
-    axis.set_title(f"Difference: {quantity_label(quantity)} (Panel + ADM - Fluent)\n{plane_title}")
+    axis.set_xlabel(f"{plane_axes[0].upper()} [m]", fontsize=12)
+    axis.set_ylabel(f"{plane_axes[1].upper()} [m]", fontsize=12)
+    axis.set_title(f"Difference: {quantity_label(quantity)} (Panel + ADM - Fluent)\n{plane_title}", fontsize=13)
     axis.grid(alpha=0.2)
     colorbar = fig.colorbar(
         cm.ScalarMappable(norm=norm, cmap=meta["difference_cmap"]),
@@ -271,6 +273,8 @@ def _plot_difference(
         label=quantity_label(quantity),
     )
     colorbar.set_ticks(np.linspace(-limit, limit, 7))
+    colorbar.ax.tick_params(labelsize=10)
+    colorbar.set_label(quantity_label(quantity), fontsize=12)
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     if not show_plots:
         plt.close(fig)

@@ -1,227 +1,163 @@
-# Panel Method Solver - Foundation Complete ✓
+# Panel Method Solver & Thermal/Acoustic Analysis Framework
 
-**Status:** Phase 1 Complete - Ready for Solver Implementation  
-**Date:** 2026-01-18
+A Python framework for 2D and 3D potential flow panel method solving, boundary layer analysis, and ducted actuator disk fan modeling. Developed as part of a Final Year Project for desktop thermal and acoustic analysis.
 
 ---
 
-## What's Been Built
+## Capabilities
 
-### Core Architecture (Complete)
+### 1. 2D Panel Method Solvers
+- **Constant-Strength Source Panel Method** (Katz & Plotkin formulation)
+- **Linear-Strength Source Panel Method** (Node-based continuous formulation)
+- **Linear-Strength Vortex Panel Method** (Zero net circulation closure for bluff bodies)
+- **Constant-Strength Dirichlet Doublet Panel Method** (Morino formulation)
+- **Linear-Strength Source/Doublet Panel Method** (Morino linear Dirichlet BCs)
 
-```
-src/
-├── core/
-│   ├── geometry/          ✓ Primitives, Mesh, Transform, Component, Scene
-│   ├── io/                ✓ JSON/XY readers, YAML case loader
-│   └── config/            ✓ Pydantic validation schemas
-├── test/                  ✓ Foundation tests
-data/geometries/           ✓ Example geometry files
-cases/                     ✓ Example YAML cases
-```
+### 2. Viscous & Thermal Boundary Layer Solvers
+- **Von Kármán Momentum Integral BL Solver**: Supports Thwaites, Pohlhausen, Falkner-Skan, and Blasius profiles.
+- Automatic stagnation point detection via sign-change interpolation and analytical patching.
+- Reconstructed 2D boundary layer velocity fields and boundary layer displacement thickness envelopes.
 
-### Features Implemented
+### 3. 3D Panel Solver & Actuator Disk Model (ADM)
+- **3D Constant-Source Panel Method**: Quad and triangle surface discretization, vectorized Numba JIT influence matrix calculation.
+- **Gmsh CAD Importer**: Direct import and surface meshing of `.step` and `.stl` geometries.
+- **Actuator Disk Model (ADM)**: Coupled potential flow + ducted fan pressure-jump iteration matching empirical P-Q fan curves with multi-fan support.
+- Direct static pressure field reconstruction across field points and duct cross-sections.
 
-- **3D-Ready Geometry**: All arrays are (N, 3) with z=0 for 2D problems
-- **Scene Graph**: Multi-component support with transforms
-- **Config Validation**: Pydantic schemas catch errors early
-- **Extensible Case Types**: YAML `case_type` field for future mesh formats
-- **Tested**: Foundation validation suite included
+### 4. Post-Processing & Visualization
+- **2D Visualizations**: Contour plots (velocity, pressure coefficient $C_p$, stream function $\psi$), surface envelope distributions, OpenFOAM CFD comparison plots.
+- **3D Visualizations**: PyVista VTK volume field rendering, 3D surface streamlines, vector glyphs, cut-plane slices, and ParaView export.
 
 ---
 
 ## Quick Start
 
-### 1. Install Dependencies
+### 1. Installation & Environment
+
+The framework uses standard scientific Python dependencies and `pyproject.toml` for editable installation:
 
 ```bash
-mamba install --file requirements.txt
-# or
-pip install -r requirements.txt
+# Clone the repository
+git clone https://github.com/Nuwantha005/Framework-for-Desktop-computer-Thermal-and-Acoustic-Analysis.git
+cd panel-method-solver
+
+# Install in editable mode
+pip install -e .
 ```
 
-### 2. Run Foundation Test
+### 2. Running 2D Demos
 
 ```bash
-python test_foundation.py
+# Run 2D rounded rectangle demo
+python demos/demo_rounded_rectangle.py
+
+# Run 2D solver comparison (Constant vs Linear vs Vortex vs Doublet)
+python demos/demo_solver_comparison.py
+
+# Run Von Kármán viscous boundary layer demo
+python demos/demo_boundary_layer.py
 ```
 
-Expected output:
-```
-╔══════════════════════════════════════════════════════════╗
-║                                                          ║
-║  PANEL METHOD SOLVER - FOUNDATION ARCHITECTURE TEST      ║
-║                                                          ║
-╚══════════════════════════════════════════════════════════╝
+### 3. Running 3D Demos & Actuator Disk Model
 
-TEST 1: Basic Geometry Generation
-✓ Created rectangle mesh
-  Nodes: 4
-  Panels: 4
-  ...
+```bash
+# 3D Sphere Potential Flow Demo
+python demos/demo_sphere_3d.py
 
-✓ ALL TESTS PASSED
-Ready for Phase 2: Panel Solver Implementation
-```
+# 3D Ducted Actuator Disk Model (Circular Vent case)
+python demos/demo_actuator_disk.py --case cases/cicular_vent
 
-### 3. Try Example Cases
-
-```python
-from core.io import CaseLoader
-
-# Load case file
-scene, config = CaseLoader.load("cases/single_square.yaml")
-
-# Assemble global mesh
-global_mesh = scene.assemble()
-
-print(f"Assembled {global_mesh.num_panels} panels")
-# Next: Pass to solver...
+# PyVista 3D Streamlines Demo
+python demos/demo_streamlines_3d_pyvista.py
 ```
 
 ---
 
-## Architecture Highlights
+## Project Architecture
 
-### Data-Oriented Design
-
-No deep inheritance—just clean dataclasses and NumPy arrays:
-
-```python
-@dataclass
-class Mesh:
-    nodes: NDArray        # (N, 3)
-    panels: NDArray       # (P, 2) for 2D
-    centers: NDArray      # Computed
-    normals: NDArray      # Computed
-    cell_data: dict       # Results go here
+```
+src/
+├── core/
+│   ├── config/          # Pydantic configuration schemas (schemas.py)
+│   ├── geometry/        # Mesh2D/Mesh3D, Component, Scene graph, Gmsh CAD reader
+│   └── io/              # YAML case loader, JSON geometry I/O, case exporter
+├── solvers/
+│   ├── panel2d/         # Source, Linear Source, Vortex, Doublet 2D solvers & influences
+│   ├── panel3d/         # 3D Constant Source panel solver with Numba JIT acceleration
+│   ├── boundary_layer/  # Von Kármán momentum integral BL solver & profiles
+│   └── actuator/        # ADM coupled solver, doublet sheets, fan curve interpolation
+├── postprocessing/      # FieldData, FluidState, ProcessorPipeline (Cp, phi, psi, omega)
+└── visualization/       # Visualizer, ComparisonVisualizer, VelocityField2D, PyVista/Matplotlib plotters
 ```
 
-### Scene Graph Pattern
+---
 
-```python
-Scene
-  ├── Component("square_left")
-  │     └── Mesh (local) + Transform → global position
-  └── Component("square_right")
-        └── Mesh (local) + Transform → global position
+## Case File & Folder Structure
+
+Case definitions are self-contained inside dedicated subdirectories under `cases/`. Each case folder contains its simulation specification (`case.yaml`), raw geometry files (JSON/STEP/STL), empirical fan curves or input data, and an automatically created `out/` directory for generated plots, CSV exports, and VTK fields.
+
+### Case Directory Layout Example
+
+```
+cases/cicular_vent/
+├── case.yaml                  # Primary simulation & solver config
+├── shapes/                    # CAD geometry files or JSON panel specs
+│   └── duct_casing.STEP       # (Optional) STEP/STL or JSON boundary geometry
+├── data/                      # Input datasets and fan performance curves
+│   └── fan_curve.csv          # P-Q performance data (Flow rate vs Static Pressure)
+└── out/                       # Generated outputs (Gitignored)
+    ├── mesh.png               # Visualized boundary mesh
+    ├── adm/                   # Actuator disk convergence plots & CSVs
+    │   ├── doublet_iterations.csv
+    │   └── doublet_iterations.png
+    └── validation/            # Extracted surface metrics & Fluent comparison plots
+        ├── cut_plane_comparison.png
+        └── axis_line_samples.csv
 ```
 
-Call `scene.assemble()` → single global mesh with component IDs.
-
-### YAML Case Files
+### Example `case.yaml`
 
 ```yaml
-name: "My Simulation"
-case_type: "hardcoded_panels_2d"
+name: "Ducted Fan Vent Simulation"
+case_type: "actuator_disk_3d"
+
+freestream: [0.0, 0.0, 0.0]  # Freestream velocity vector [U_x, U_y, U_z] in m/s
+
+fluid:
+  density: 1.225              # Fluid density (kg/m³)
+  kinematic_viscosity: 1.5e-5  # Kinematic viscosity (m²/s)
 
 components:
-  - name: "square"
-    geometry_file: "data/geometries/square_unit.json"
-    transform:
-      translation: [0.0, 0.0, 0.0]
-      rotation_deg: 0.0
+  - name: "duct_wall"
+    geometry_file: "shapes/duct_casing.STEP"
+    mesh_levels: [0.025, 0.012]
 
-solver:
-  type: "constant_source"
-  tolerance: 1.0e-10
-```
+inlets:
+  - name: "inlet_disk"
+    center: [0.0, 0.0, -0.5]
+    radius: 0.06
+    normal: [0.0, 0.0, 1.0]
 
-All validated via Pydantic—typos raise errors immediately.
+outlets:
+  - name: "outlet_disk"
+    center: [0.0, 0.0, 0.5]
+    radius: 0.06
+    normal: [0.0, 0.0, 1.0]
 
----
-
-## File Structure
-
-```
-panel-method-solver/
-├── requirements.txt              ✓ Dependencies
-├── test_foundation.py            ✓ Quick validation script
-├── cases/
-│   ├── single_square.yaml        ✓ Example case
-│   └── two_squares.yaml          ✓ Multi-body example
-├── data/geometries/
-│   └── square_unit.json          ✓ Unit square geometry
-├── src/
-│   ├── core/
-│   │   ├── geometry/
-│   │   │   ├── primitives.py     ✓ Point3D, Vector3D
-│   │   │   ├── mesh.py           ✓ Mesh dataclass
-│   │   │   ├── component.py      ✓ Transform, Component
-│   │   │   └── scene.py          ✓ Scene assembler
-│   │   ├── io/
-│   │   │   ├── geometry_io.py    ✓ JSON/XY readers
-│   │   │   └── case_loader.py    ✓ YAML case parser
-│   │   └── config/
-│   │       └── schemas.py        ✓ Pydantic models
-│   ├── solvers/                  ← Next: panel solver
-│   ├── visualization/            ← Next: matplotlib backend
-│   └── test/
-│       └── test_geometry_foundation.py  ✓ Pytest suite
-└── notes/AI/CoPilot/
-    └── Architecture-Plan.md      ✓ Full design document
+actuator_disks:
+  - name: "main_fan"
+    center: [0.0, 0.0, 0.0]
+    axis: [0.0, 0.0, 1.0]
+    radius: 0.06
+    curve_file: "data/fan_curve.csv"
+    curve_type: "linear"       # "linear" or "spline"
+    relaxation: 0.3
+    tolerance: 1.0e-4
+    max_iterations: 50
 ```
 
 ---
 
-## Next Steps (Phase 2)
+## License & Project Context
 
-Ready to implement:
-
-1. **Constant-Source Kernel** (`src/solvers/panel/kernels.py`)
-   - 2D influence coefficient formulas
-   - Handle self-influence singularity
-
-2. **Panel Solver** (`src/solvers/panel/solver.py`)
-   - Assemble influence matrix
-   - Apply Neumann BC (Vn = 0 for walls)
-   - Solve linear system
-   - Query velocity at arbitrary points
-
-3. **Matplotlib Visualization** (`src/visualization/`)
-   - Mesh plotting (panels + normals)
-   - Contour plots (velocity, pressure)
-   - Streamline integration
-
-4. **Validation**
-   - Cylinder test (compare to analytical Cp)
-   - Two-body test (check no interpenetration)
-
----
-
-## Design Decisions Log
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Array dimensions | Always (N, 3) with z=0 | Seamless 2D→3D transition |
-| Case format | YAML + `case_type` enum | Human-readable, extensible |
-| Geometry storage | JSON for structured, XY for point clouds | Machine-readable |
-| Validation | Pydantic schemas | Catch config errors early |
-| Multi-body | Scene graph pattern | Clean component composition |
-
----
-
-## Testing
-
-Run full test suite:
-```bash
-pytest src/test/test_geometry_foundation.py -v
-```
-
-Or use the quick demo:
-```bash
-python test_foundation.py
-```
-
----
-
-## Questions?
-
-See full architecture details in [notes/AI/CoPilot/Architecture-Plan.md](notes/AI/CoPilot/Architecture-Plan.md)
-
----
-
-**Phase 1: Foundation** ✓ COMPLETE  
-**Phase 2: Solver Core** ← YOU ARE HERE  
-**Phase 3: Visualization** ← Pending  
-**Phase 4: Validation** ← Pending
+Developed as part of a Final Year Project in Thermal and Acoustic Analysis of Desktop Computers.

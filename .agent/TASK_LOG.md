@@ -350,3 +350,17 @@
   - `demos/demo_case_mesh_export.py`
   - `src/solvers/actuator/__init__.py`
 - **Status**: Complete
+
+## 2026-08-14
+### Repository Consolidation & Branch Merging for Publishing
+- **What was done**: Cleaned up uncommitted files/symlinks on active branch `3d-panel-solver-implemention`, committed agent documentation and visualization improvements, synced with remote tracking branch `origin/3d-panel-solver-implemention`, merged `boundary-layer-experimentation` and `3d-panel-solver-implemention` into `main`, and updated `README.md` to reflect all 2D/3D panel solvers, boundary layer, ADM, CAD features, and case directory structure example.
+- **Files modified/created**:
+  - `README.md` — updated project overview, capabilities, quick start, case directory layout & example `case.yaml`, and module map.
+  - `.agent/CLASS_STRUCTURE.md` & `IMPLEMENTATION_DETAILS.md` — committed untracked context docs.
+  - `demos/demo_plot_doublets.py` — committed new doublet convergence visualization demo.
+  - `src/visualization/` & `validation/scripts/` — consolidated plotting functions, line size styling, and duplicate arc length handling.
+- **Branches merged into main**:
+  - `boundary-layer-experimentation`
+  - `3d-panel-solver-implemention`
+- **Status**: Complete
+
